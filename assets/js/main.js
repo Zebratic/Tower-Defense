@@ -43,7 +43,6 @@ function SetupEventListeners() {
 
     ws.onmessage = function (event) {
         let msg = event.data;
-        console.log(msg);
 
         let args = msg.split("|");
 
@@ -274,8 +273,17 @@ function GameLoop()
     fill(0);
     textSize(32);
     textAlign(LEFT, TOP);
-    text("$ " + game_data.money, 30, 10);
-    text("Lives: " + game_data.health, 30, 45);
+    strokeWeight(3);
+    fill(255, 255, 0);
+    text("🪙 " + (game_data.money == undefined ? 650 : game_data.money), 30, 10);
+    fill(255, 0, 0);
+    text("💓 " + (game_data.health == undefined ? 100 : game_data.health), 30, 50);
+    if (game_data.wave != null && game_data.wave.round != null)
+    {
+        fill(0, 150, 255);
+        text("🔁 " + (game_data.wave.round == undefined ? 0 : game_data.wave.round), 30, 90);
+    }
+    strokeWeight(1);
     
     // draw play button at 1650x884
     fill(0, 255, 0);
@@ -299,11 +307,26 @@ function GameLoop()
 
 
 
+    // ========== BLOONS ==========
+    if (game_data.wave != null && game_data.wave.bloons != null)
+    {
+        for (var i = 0; i < game_data.wave.bloons.length; i++)
+        {
+            // {"players":[{"ip":"::1","username":"dsads","score":0,"uid":9117},{"ip":"::1","username":"dsads","score":0,"uid":7890}],"timestamp":168552138924,"map":"monkey_meadows","wave":{"started":false,"round":2,"bloons":[{"progress":0.8210000000000006,"health":0,"speed":0.001},{"progress":0.8120000000000006,"health":0,"speed":0.001},{"progress":0.8040000000000006,"health":0,"speed":0.001},{"progress":0.7950000000000006,"health":0,"speed":0.001},{"progress":0.7870000000000006,"health":0,"speed":0.001},{"progress":0.7770000000000006,"health":0,"speed":0.001},{"progress":0.7680000000000006,"health":0,"speed":0.001},{"progress":0.7590000000000006,"health":0,"speed":0.001},{"progress":0.7500000000000006,"health":0,"speed":0.001},{"progress":0.7420000000000005,"health":0,"speed":0.001},{"progress":0.7330000000000005,"health":0,"speed":0.001},{"progress":0.7250000000000005,"health":0,"speed":0.001},{"progress":0.7160000000000005,"health":0,"speed":0.001},{"progress":0.7070000000000005,"health":0,"speed":0.001},{"progress":0.6980000000000005,"health":0,"speed":0.001},{"progress":0.6900000000000005,"health":0,"speed":0.001},{"progress":0.6810000000000005,"health":0,"speed":0.001},{"progress":0.6720000000000005,"health":0,"speed":0.001},{"progress":0.6640000000000005,"health":0,"speed":0.001},{"progress":0.6550000000000005,"health":0,"speed":0.001}],"last_spawn":168552138129,"spawn_interval":"10","total_bloons":20},"health":100,"money":650}
+            let bloon = game_data.wave.bloons[i];
+            if (bloon == null || bloon == false) // non existent or already popped
+                continue;
+
+            let pos = GetXYPositionByPercent(bloon.progress);
+            fill(255, 0, 0);
+            circle(pos[0], pos[1], 20);
+            console.log(pos);
+        }
+    }
+
+
 
     // ========== TOWERS ==========
-
-
-    // ========== BLOONS ==========
 
 
     // ========== PROJECTILES ==========

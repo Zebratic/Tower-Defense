@@ -22,18 +22,13 @@ const port = 3500;
 
 
 /////////////////// LIBS ///////////////////
-let classes_js = fs.readFileSync(path.join(__dirname, 'assets', 'js', 'classes.js'), 'utf8');
-eval(classes_js);
+let wave_data = JSON.parse(fs.readFileSync(__dirname + '/server/waves.json'));
 /////////////////// LIBS ///////////////////
 
 
 /////////////////// FUNCTIONS ///////////////////
 function BettterLog(type, str) {
     console.log("\x1b[90m[" + new Date().toLocaleString() + "] " + colors[type] + str + "\x1b[0m");
-}
-
-function base64Decode(str) {
-    return Buffer.from(str, 'base64').toString('utf8')  
 }
 /////////////////// FUNCTIONS ///////////////////
 
@@ -123,9 +118,6 @@ app.ws('/', function (ws, req) {
 
 
         // update_data|sell_tower|58
-
-
-
         if (msg.startsWith('update_data|')) {
             let action = msg.split('|')[1].toLowerCase();
             let data = "";
@@ -159,7 +151,7 @@ app.ws('/', function (ws, req) {
                     break;
 
                 case "start_round":
-                    setTimeout(GameLoop, 1000, game_id);
+                    setTimeout(GameLoop, 1000, game_id, true);
                     break;
             }
         }
@@ -291,48 +283,116 @@ setInterval(function () {
 /////////////////// START SERVER ///////////////////
 
 
+
+
+
+
+class Bloon {
+    constructor(health) {
+        this.progress = 0; // percent
+        this.health = health;
+        this.speed = 0.001;
+    }
+}
+
 /////////////////// START GAME LOOP ///////////////////
-function GameLoop(game_id)
+let last_tick = 0;
+function GameLoop(game_id, first_run = false)
 {
     let game = games[game_id];
     if (game == null)
         return;
 
-    if (game.wave == null)
+    if (first_run)
     {
         game.wave = {
-            started: false,
-            round: 0,
+            started: true,
+            round: 1,
             bloons: []
         }
+        game.health = 100;
+        game.money = 650;
     }
 
     // start round if not started
-    if (game.wave.started == false)
-    {
-        game.wave.started = true;
-        game.wave.round++;
-        game.wave.bloons = [];
-    }
-
-    // spawn bloons slowly
-    if (game.wave.bloons.length < game.wave.round * 10)
-        setTimeout(AddBloons, 250, game_id, 1, 1);
-    
-
-    setTimeout(GameLoop, 1000, game_id);
-}
-
-function AddBloons(game_id, health, amount)
-{
-    let game = games[game_id];
-    if (game == null)
+    let current_wave = wave_data[game.wave.round];
+    if (current_wave == null)
         return;
 
-    for (var i = 0; i < amount; i++)
+    if (game.wave.started)
     {
+        game.wave.started = false;
+        game.wave.round++;
+        game.wave.bloons = [];
+        game.wave.last_spawn = timestamp;
+        game.wave.spawn_interval = current_wave.interval;
+        game.wave.total_bloons = 0;
 
-        // note: Bloon is undefined
-        game.wave.bloons.push(new Bloon(health));
+        // get total bloons
+        for (var i = 1; i <= 9; i++)
+            game.wave.total_bloons += parseInt(current_wave[i]);
+
+        BettterLog("normal", "Starting round " + game.wave.round + " on game " + game_id + " with " + game.wave.total_bloons + " bloons");
     }
+
+    // spawn bloons
+    if (game.wave.bloons.length < game.wave.total_bloons )
+    {
+        // get time since last spawn
+        let time_since_last_spawn = timestamp - game.wave.last_spawn;
+
+        // if time since last spawn is greater than spawn interval
+        if (time_since_last_spawn >= game.wave.spawn_interval)
+        {
+            game.wave.last_spawn = timestamp;
+            // get bloon to spawn
+            let bloon_to_spawn = 0;
+            for (var i = 1; i <= 9; i++)
+            {
+                if (current_wave[i] > 0)
+                {
+                    bloon_to_spawn = i;
+                    break;
+                }
+            }
+
+            game.wave.bloons.push(new Bloon(bloon_to_spawn));
+            current_wave[bloon_to_spawn]--;
+        }
+    }
+
+
+
+    // move bloons
+    if (timestamp != last_tick) {
+        for (const [key, value] of Object.entries(game.wave.bloons)) {
+            value.progress += value.speed;
+
+            // if bloon is at the end
+            if (value.progress >= 1)
+            {
+                game.wave.bloons[key] = false; // popped bloon
+                game.health -= value.health;
+                BettterLog("error", "Bloon reached the end on game " + game_id + " | Health: " + game.health);
+                games[game_id] = game;
+            }
+
+            // if health is 0
+            if (game.health <= 0)
+            {
+                game.wave = null;
+                game.health = 0;
+                game.money = 0;
+                game.wave = null;
+                BettterLog("error", "Game id " + game_id + " has ended");
+                games[game_id] = game;
+            }
+
+        }
+    }
+
+    games[game_id] = game; // save game
+    last_tick = timestamp;
+
+    setTimeout(GameLoop, 0, game_id);
 }

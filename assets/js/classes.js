@@ -40,11 +40,6 @@ class Bloon {
             case 8: this.speed = 0.0018; break;
             case 9: this.speed = 0.0022; break;
         }
-            
-
-
-
-
 
         return false;
     }
