@@ -1,9 +1,8 @@
-// wait for maps to load
-while (maps == undefined) { sleep(100); }
+while (maps == undefined) { sleep(100); } // wait for maps to load
 
 // ================================ GLOBAL VARIABLES START ================================
 var connected = false;
-var websocket_url = "ws://localhost:3500/";
+var websocket_url = "wss://b939-141-98-254-179.ngrok-free.app/";
 var ws = null;
 
 // game info
@@ -11,11 +10,17 @@ var game_id = "";
 var other_player = "";
 var game_data = null;
 var should_get_data = false;
+var drag_handler = {
+    tower: null,
+    is_selected: false,
+    is_dragging: false,
+};
 
 let menu = {
     player_name_input: null,
     game_id_input: null,
     join_button: null,
+    start_round_button: null,
     dart_monkeys: [],
 };
 let cache = {
@@ -61,6 +66,7 @@ function SetupEventListeners() {
 
             case "player_joined":
                 other_player = args[1];
+                menu.start_round_button.show();
                 break;
 
             case "player_left":
@@ -103,6 +109,11 @@ function setup() {
 
     menu.join_button = createButton("Join");
     menu.join_button.hide();
+
+    menu.start_round_button = createButton("START");
+    menu.start_round_button.hide();
+    menu.start_round_button.position(1660, 884);
+    menu.start_round_button.size(220, 50);
 }
 
 // on resize fit canvas to screen
@@ -183,7 +194,7 @@ function ConnectMenu()
                 menu.dart_monkeys.push({ pos: sprite_pos });
             }
 
-            // draw dart_monkeys
+            // draw dart_monkeys on menu screen
             for (var i = 0; i < menu.dart_monkeys.length; i++)
             {
                 let sprite_pos = menu.dart_monkeys[i].pos;
@@ -197,11 +208,6 @@ function ConnectMenu()
             }
 
         }
-
-
-
-         
-        
 
         return;
     }
@@ -255,18 +261,6 @@ function GameLoop()
         image(map_img, 0, 0, map_img.width, map_img.height);
 
 
-    // ===== DEBUG PATH =====
-    // draw line from point to point
-    stroke(255, 0, 0);
-    strokeWeight(5);
-    for (var i = 0; i < map.path.length - 1; i++)
-        line(map.path[i][0], map.path[i][1], map.path[i + 1][0], map.path[i + 1][1]);
-    strokeWeight(1);
-    stroke(0);
-    // ===== DEBUG PATH =====
-
-
-
     // ========== UI ==========
     
     // draw money in left top corner
@@ -275,64 +269,223 @@ function GameLoop()
     textAlign(LEFT, TOP);
     strokeWeight(3);
     fill(255, 255, 0);
-    text("🪙 " + (game_data.money == undefined ? 650 : game_data.money), 30, 10);
+    text("💰 " + game_data.money, 30, 10);
     fill(255, 0, 0);
-    text("💓 " + (game_data.health == undefined ? 100 : game_data.health), 30, 50);
+    text("💓 " + game_data.health, 30, 50);
     if (game_data.wave != null && game_data.wave.round != null)
     {
         fill(0, 150, 255);
-        text("🔁 " + (game_data.wave.round == undefined ? 0 : game_data.wave.round), 30, 90);
+        text("🔁 " + game_data.wave.round, 30, 90);
     }
     strokeWeight(1);
     
-    // draw play button at 1650x884
-    fill(0, 255, 0);
-    rect(1650, 884, 100, 60);
-    fill(0);
-    textSize(28);
-    textAlign(CENTER, CENTER);
-    text("START", 1700, 914);
-
-    // on click play button
-    if (mouseIsPressed && mouseX > 1650 && mouseX < 1750 && mouseY > 884 && mouseY < 944)
+    // START BUTTON
+    menu.start_round_button.mousePressed(function () {
         ws.send("update_data|start_round");
+    });
+    
 
-   
+    // ========== BUY TOWER BUTTONS ==========
+    for (var i = 0; i < Object.keys(tower_list).length; i++)
+    {
+        let tower = tower_list[Object.keys(tower_list)[i]];
+        let sprite = GetTexture("towers/" + Object.keys(tower_list)[i]);
+        if (sprite == null)
+            continue;
 
+        // from x = 1662, y = 90
+        let x = 1662 + (i % 2) * 110;
+        let y = 90 + Math.floor(i / 2) * 110;
+        
+        image(sprite, x, y, 110, 110);
 
+        // draw price bottom right of tower
+        fill(0);
+        textSize(16);
+        textAlign(RIGHT, BOTTOM);
+        strokeWeight(3);
+        fill(255, 255, 0);
+        text(tower.price, x + 100, y + 100);
+        strokeWeight(1);
 
+        // if dragged
+        if (mouseIsPressed && mouseX > x && mouseX < x + sprite.width && mouseY > y && mouseY < y + sprite.height)
+        {
+            drag_handler.tower = tower;
+            drag_handler.is_dragging = true;
+        }
+    }
 
+    // ========== TOWERS ==========
+    if (game_data.towers != null)
+    {
+        for (var i = 0; i < game_data.towers.length; i++)
+        {
+            //render towers
+            let tower = game_data.towers[i];
+            tower = new Tower(tower.type, tower.x, tower.y, tower.angle);
+            let sprite = GetTexture("towers/" + tower.type);
+            if (sprite != null)
+            {
+                // draw tower so it looks at tower.angle and is centered on tower.x and tower.y
+                push();
+                translate(tower.x, tower.y);
+                rotate(tower.angle + Math.PI / 2);
+                image(sprite, -sprite.width / 2, -sprite.height / 2, sprite.width, sprite.height);
+                pop();
+            }
+        }
+    }
 
-
-
-
-
+    
     // ========== BLOONS ==========
     if (game_data.wave != null && game_data.wave.bloons != null)
     {
         for (var i = 0; i < game_data.wave.bloons.length; i++)
         {
-            // {"players":[{"ip":"::1","username":"dsads","score":0,"uid":9117},{"ip":"::1","username":"dsads","score":0,"uid":7890}],"timestamp":168552138924,"map":"monkey_meadows","wave":{"started":false,"round":2,"bloons":[{"progress":0.8210000000000006,"health":0,"speed":0.001},{"progress":0.8120000000000006,"health":0,"speed":0.001},{"progress":0.8040000000000006,"health":0,"speed":0.001},{"progress":0.7950000000000006,"health":0,"speed":0.001},{"progress":0.7870000000000006,"health":0,"speed":0.001},{"progress":0.7770000000000006,"health":0,"speed":0.001},{"progress":0.7680000000000006,"health":0,"speed":0.001},{"progress":0.7590000000000006,"health":0,"speed":0.001},{"progress":0.7500000000000006,"health":0,"speed":0.001},{"progress":0.7420000000000005,"health":0,"speed":0.001},{"progress":0.7330000000000005,"health":0,"speed":0.001},{"progress":0.7250000000000005,"health":0,"speed":0.001},{"progress":0.7160000000000005,"health":0,"speed":0.001},{"progress":0.7070000000000005,"health":0,"speed":0.001},{"progress":0.6980000000000005,"health":0,"speed":0.001},{"progress":0.6900000000000005,"health":0,"speed":0.001},{"progress":0.6810000000000005,"health":0,"speed":0.001},{"progress":0.6720000000000005,"health":0,"speed":0.001},{"progress":0.6640000000000005,"health":0,"speed":0.001},{"progress":0.6550000000000005,"health":0,"speed":0.001}],"last_spawn":168552138129,"spawn_interval":"10","total_bloons":20},"health":100,"money":650}
             let bloon = game_data.wave.bloons[i];
-            if (bloon == null || bloon == false) // non existent or already popped
+            bloon = new Bloon(bloon.health, bloon.progress);
+            if (bloon == null || bloon == false || bloon.popped) // non existent or already popped
                 continue;
 
-            let pos = GetXYPositionByPercent(bloon.progress);
-            fill(255, 0, 0);
-            circle(pos[0], pos[1], 20);
-            console.log(pos);
+            let pos = bloon.GetPosition(maps[game_data.map]);
+            if (pos != null)
+            {
+                let sprite = GetTexture("bloons/" + bloon.health);
+                if (sprite != null)
+                {
+                    image(sprite, pos[0] - sprite.width / 2, pos[1] - sprite.height / 2, sprite.width, sprite.height);
+                }
+            }
         }
     }
 
+    // if mouse clicked on a tower, select it in drag_handler
+    if (mouseIsPressed)
+    {
+        if (!drag_handler.is_dragging)
+        {
+            let found_tower = false;
+            for (var i = 0; i < game_data.towers.length; i++)
+            {
+                let tower = game_data.towers[i];
+                let sprite = GetTexture("towers/" + tower.type);
+                if (sprite != null)
+                {
+                    if (mouseX > tower.x - sprite.width / 2 && mouseX < tower.x + sprite.width / 2 && mouseY > tower.y - sprite.height / 2 && mouseY < tower.y + sprite.height / 2)
+                    {
+                        found_tower = true;
+                        drag_handler.tower = tower;
+                        drag_handler.is_selected = true;
+                        break;
+                    }
+                }
+            }
 
+            if (!found_tower)
+                drag_handler.is_selected = false;
+        }
+    }
 
-    // ========== TOWERS ==========
+    // if tower is selected, draw range circle
+    if (drag_handler.is_selected)
+    {
+        let sprite = GetTexture("towers/" + drag_handler.tower.type);
+        if (sprite != null)
+        {
+            fill(0, 0, 0, 100);
+            circle(drag_handler.tower.x, drag_handler.tower.y, drag_handler.tower.range);
+        }
+    }
 
 
     // ========== PROJECTILES ==========
 
 
-    // ==========  ==========
+
+    // ========== DRAG ENTITY ==========
+    if (drag_handler.is_dragging)
+    {
+        if (drag_handler.tower != null)
+        {
+            let sprite = GetTexture("towers/" + Object.keys(tower_list)[Object.values(tower_list).indexOf(drag_handler.tower)]);
+            if (sprite != null)
+            {
+                // check if tower can be placed
+                let can_place = true;
+                let mouse_pos = [mouseX, mouseY];
+                if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
+                    mouse_pos = [width / 2, height / 2];
+
+                // check if mouse is close to full path line calculated by all points
+                for (var i = 0; i < map.path.length - 1; i++)
+                {
+                    let point1 = map.path[i];
+                    let point2 = map.path[i + 1];
+                    let distance = distToSegment(mouse_pos[0], mouse_pos[1], point1[0], point1[1], point2[0], point2[1]);
+                    if (distance <= 50)
+                    {
+                        can_place = false;
+                        break;
+                    }
+                }
+
+
+                // check if mouse is close to other towers within 50 pixels
+                if (game_data.towers == null)
+                    game_data.towers = [];
+
+                for (var i = 0; i < game_data.towers.length; i++)
+                {
+                    let tower = game_data.towers[i];
+                    let distance = dist(mouse_pos[0], mouse_pos[1], tower.x, tower.y);
+                    if (distance <= 50)
+                    {
+                        can_place = false;
+                        break;
+                    }
+                }
+
+                // check if mouse is on screen
+                if (mouse_pos[0] < 0 || mouse_pos[0] > width || mouse_pos[1] < 0 || mouse_pos[1] > height)
+                    can_place = false;
+                    
+                if (mouse_pos[0] > 1642 || mouse_pos[0] < 24 || mouse_pos[1] > 951 || mouse_pos[1] < 50)
+                    can_place = false;
+                
+                if (can_place)
+                {
+                    // draw gray 50% opacity filled circle around mouse
+                    fill(0, 0, 0, 100);
+                    circle(mouse_pos[0], mouse_pos[1], drag_handler.tower.range);
+
+                    image(sprite, mouseX - sprite.width / 2, mouseY - sprite.height / 2, sprite.width, sprite.height);
+
+                    // if mouse released, place tower
+                    if (!mouseIsPressed)
+                    {
+                        console.log("placed tower");
+                        ws.send("update_data|place_tower|" + Object.keys(tower_list)[Object.values(tower_list).indexOf(drag_handler.tower)] + "|" + mouseX + "|" + mouseY);
+                        drag_handler.is_dragging = false;
+                    }
+                }
+                else
+                {
+                    // draw red 50% opacity filled circle around mouse
+                    fill(255, 0, 0, 100);
+                    circle(mouse_pos[0], mouse_pos[1], drag_handler.tower.range);
+
+                    // red overlay
+                    tint(255, 0, 0, 100);
+                    image(sprite, mouseX - sprite.width / 2, mouseY - sprite.height / 2, sprite.width, sprite.height);
+                    noTint();
+                }
+            }
+        }
+    }
+
+    if (!mouseIsPressed)
+        drag_handler.is_dragging = false;
 }
 
 

@@ -23,15 +23,24 @@ const port = 3500;
 
 /////////////////// LIBS ///////////////////
 let wave_data = JSON.parse(fs.readFileSync(__dirname + '/server/waves.json'));
+// load exports.Bloon from server/classes.js
+const classes = require(__dirname + '/assets/js/classes.js');
+const Bloon = classes.Bloon;
+const Tower = classes.Tower;
+const Projectile = classes.Projectile;
+
+// load exports.maps and exports.distToSegment from server/maps.js
+const mapsfile = require(__dirname + '/assets/js/maps.js');
+const maps = mapsfile.maps;
+const distToSegment = mapsfile.distToSegment;
 /////////////////// LIBS ///////////////////
 
 
-/////////////////// FUNCTIONS ///////////////////
+/////////////////// LOGGER ///////////////////
 function BettterLog(type, str) {
     console.log("\x1b[90m[" + new Date().toLocaleString() + "] " + colors[type] + str + "\x1b[0m");
 }
-/////////////////// FUNCTIONS ///////////////////
-
+/////////////////// LOGGER ///////////////////
 
 
 /////////////////// WEBSOCKET ///////////////////
@@ -64,7 +73,6 @@ app.ws('/', function (ws, req) {
                         {
                             ip: ip,
                             username: username,
-                            score: 0,
                             uid: ws.uid
                         }
                     ],
@@ -79,7 +87,6 @@ app.ws('/', function (ws, req) {
                     games[game_id].players.push({
                         ip: ip,
                         username: username,
-                        score: 0,
                         uid: ws.uid
                     });
                     BettterLog("success", "Added player to game_id '" + game_id + "' from IP: " + ip);
@@ -90,7 +97,9 @@ app.ws('/', function (ws, req) {
                         if (value.uid == games[game_id].players[0].uid)
                         {
                             value.send("player_joined|" + username); // send to other player
-                            ws.send("player_joined|" + games[game_id].players[0].username); // send 
+                            ws.send("player_joined|" + games[game_id].players[0].username); // send
+
+                            setTimeout(GameLoop, 1000, game_id, true);
                         }
                     }
                 }
@@ -119,19 +128,20 @@ app.ws('/', function (ws, req) {
 
         // update_data|sell_tower|58
         if (msg.startsWith('update_data|')) {
+            BettterLog("normal", "Received update_data from " + req.connection.remoteAddress.replace("::ffff:", "") + " | " + msg);
             let action = msg.split('|')[1].toLowerCase();
-            let data = "";
-            try { msg.split('|')[2].toLowerCase(); } catch (e) { } // if no data, ignore
 
             // get game from uid
             let game_id = "";
             let player_index = -1;
+            let player_name = "";
             for (const [key, value] of Object.entries(games)) {
                 for (var i = 0; i < value.players.length; i++) {
                     if (value.players[i].uid == ws.uid)
                     {
                         game_id = key;
                         player_index = i;
+                        player_name = value.players[i].username;
                     }
                 }
             }
@@ -139,6 +149,22 @@ app.ws('/', function (ws, req) {
 
             switch (action) {
                 case "place_tower":
+                    let type = msg.split('|')[2].toLowerCase();
+
+                    let tower = new Tower();
+                    tower.x = parseInt(msg.split('|')[3].toLowerCase());
+                    tower.y = parseInt(msg.split('|')[4].toLowerCase());
+                    tower.DefineTower(type);
+
+                    BettterLog("normal", "Player " + player_name + " has " + games[game_id].money + " money");
+                    if (games[game_id].money < tower.price)
+                    {
+                        BettterLog("error", "Player " + player_name + " tried to place a tower but does not have enough money");
+                        return;
+                    }
+
+                    games[game_id].money -= tower.price; // remove money from player
+                    games[game_id].towers.push(tower); // add tower to game
                     break;
 
                 case "sell_tower":
@@ -151,7 +177,25 @@ app.ws('/', function (ws, req) {
                     break;
 
                 case "start_round":
-                    setTimeout(GameLoop, 1000, game_id, true);
+                    // check if all bloons are popped
+                    let all_bloons_popped = true;
+                    for (const [key, value] of Object.entries(games[game_id].wave.bloons)) {
+                        if (!value.popped)
+                        {
+                            all_bloons_popped = false;
+                            break;
+                        }
+                    }
+
+                    if (all_bloons_popped)
+                    {
+                        games[game_id].wave.round++;
+                        games[game_id].wave.started = true;
+                        BettterLog("normal", "Player " + player_name + " started round " + games[game_id].wave.round + " on game " + game_id);
+                    }
+                    else
+                        BettterLog("error", "Player " + player_name + " tried to start round " + games[game_id].wave.round + " on game " + game_id + " but not all bloons are popped");
+
                     break;
             }
         }
@@ -283,101 +327,93 @@ setInterval(function () {
 /////////////////// START SERVER ///////////////////
 
 
-
-
-
-
-class Bloon {
-    constructor(health) {
-        this.progress = 0; // percent
-        this.health = health;
-        this.speed = 0.001;
-    }
-}
-
 /////////////////// START GAME LOOP ///////////////////
 let last_tick = 0;
 function GameLoop(game_id, first_run = false)
 {
     let game = games[game_id];
-    if (game == null)
-        return;
-
-    if (first_run)
+    if (game != null)
     {
-        game.wave = {
-            started: true,
-            round: 1,
-            bloons: []
-        }
-        game.health = 100;
-        game.money = 650;
-    }
-
-    // start round if not started
-    let current_wave = wave_data[game.wave.round];
-    if (current_wave == null)
-        return;
-
-    if (game.wave.started)
-    {
-        game.wave.started = false;
-        game.wave.round++;
-        game.wave.bloons = [];
-        game.wave.last_spawn = timestamp;
-        game.wave.spawn_interval = current_wave.interval;
-        game.wave.total_bloons = 0;
-
-        // get total bloons
-        for (var i = 1; i <= 9; i++)
-            game.wave.total_bloons += parseInt(current_wave[i]);
-
-        BettterLog("normal", "Starting round " + game.wave.round + " on game " + game_id + " with " + game.wave.total_bloons + " bloons");
-    }
-
-    // spawn bloons
-    if (game.wave.bloons.length < game.wave.total_bloons )
-    {
-        // get time since last spawn
-        let time_since_last_spawn = timestamp - game.wave.last_spawn;
-
-        // if time since last spawn is greater than spawn interval
-        if (time_since_last_spawn >= game.wave.spawn_interval)
+        if (first_run)
         {
-            game.wave.last_spawn = timestamp;
-            // get bloon to spawn
-            let bloon_to_spawn = 0;
-            for (var i = 1; i <= 9; i++)
+            game.wave = {
+                started: true,
+                round: 0,
+                bloons: []
+            }
+            game.health = 100;
+            game.money = 650;
+            game.towers = [];
+            games[game_id] = game; // save game
+        }
+
+        if (game.wave.round == null)
+            game.wave.round = 0;
+            
+        let current_wave = wave_data[game.wave.round];
+        if (current_wave != null)
+        {
+            if (game.wave.started)
             {
-                if (current_wave[i] > 0)
+                game.wave.started = false;
+                game.wave.bloons = [];
+                game.wave.last_spawn = timestamp;
+                game.wave.spawn_interval = current_wave.interval;
+                game.wave.total_bloons = 0;
+            
+                // get total bloons
+                for (var i = 1; i <= 9; i++)
+                    game.wave.total_bloons += parseInt(current_wave[i]);
+            
+                games[game_id] = game; // save game
+            }
+        
+            // spawn bloons
+            if (game.wave.bloons.length < game.wave.total_bloons)
+            {
+                // get time since last spawn
+                let time_since_last_spawn = timestamp - game.wave.last_spawn;
+            
+                // if time since last spawn is greater than spawn interval
+                if (time_since_last_spawn >= game.wave.spawn_interval)
                 {
-                    bloon_to_spawn = i;
-                    break;
+                    game.wave.last_spawn = timestamp;
+                    // get bloon to spawn
+                    let bloon_to_spawn = 0;
+                    for (var i = 1; i <= 9; i++)
+                    {
+                        if (current_wave[i] > 0)
+                        {
+                            bloon_to_spawn = i;
+                            break;
+                        }
+                    }
+                
+                    game.wave.bloons.push(new Bloon(bloon_to_spawn));
+                    current_wave[bloon_to_spawn]--;
+                }
+                games[game_id] = game; // save game
+            }
+        
+        
+        
+            // move bloons
+            if (timestamp != last_tick) {
+                for (const [key, value] of Object.entries(game.wave.bloons)) {
+                    value.progress += value.speed;
+                
+                    // if bloon is at the end
+                    if (value.progress >= 1 && !value.popped)
+                    {
+                        game.wave.bloons[key].popped = true;
+                        game.health -= value.health;
+                        BettterLog("error", "Bloon reached the end on game " + game_id + " | Health: " + game.health);
+                    }
+                    games[game_id] = game; // save game
                 }
             }
-
-            game.wave.bloons.push(new Bloon(bloon_to_spawn));
-            current_wave[bloon_to_spawn]--;
-        }
-    }
-
-
-
-    // move bloons
-    if (timestamp != last_tick) {
-        for (const [key, value] of Object.entries(game.wave.bloons)) {
-            value.progress += value.speed;
-
-            // if bloon is at the end
-            if (value.progress >= 1)
-            {
-                game.wave.bloons[key] = false; // popped bloon
-                game.health -= value.health;
-                BettterLog("error", "Bloon reached the end on game " + game_id + " | Health: " + game.health);
-                games[game_id] = game;
-            }
-
-            // if health is 0
+        
+            // is player dead?
             if (game.health <= 0)
             {
                 game.wave = null;
@@ -385,14 +421,47 @@ function GameLoop(game_id, first_run = false)
                 game.money = 0;
                 game.wave = null;
                 BettterLog("error", "Game id " + game_id + " has ended");
-                games[game_id] = game;
+                games[game_id] = game; // save game
             }
 
+            // loop all towers to check which bloon has the highest progress value and is in range
+            for (const [key, value] of Object.entries(game.towers)) {
+                // get furthest bloon
+                let furthest_bloon = null;
+                let furthest_bloon_position = null;
+                for (const [key2, value2] of Object.entries(game.wave.bloons)) {
+                    if (!value2.popped)
+                    {
+                        let bloon_position = value2.GetPosition(mapsfile.maps[game.map]);
+                        let distance = Math.sqrt(Math.pow(value.x - bloon_position[0], 2) + Math.pow(value.y - bloon_position[1], 2));
+                        if (distance <= (value.range / 2))
+                        {
+                            if (furthest_bloon == null)
+                            {
+                                furthest_bloon = value2;
+                                furthest_bloon_position = bloon_position;
+                            }
+                            else if (furthest_bloon.progress < value2.progress)
+                            {
+                                furthest_bloon = value2;
+                                furthest_bloon_position = bloon_position;
+                            }
+                        }
+                    }
+                }
+
+                // if furthest bloon is not null, attack it
+                if (furthest_bloon != null)
+                {
+                    value.Attack(furthest_bloon_position[0], furthest_bloon_position[1]);
+                    games[game_id].towers[key] = value; // save tower
+                }
+            }
         }
     }
 
     games[game_id] = game; // save game
     last_tick = timestamp;
-
+    
     setTimeout(GameLoop, 0, game_id);
 }
