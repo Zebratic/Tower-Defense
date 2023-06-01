@@ -43,6 +43,15 @@ let songs = [
     "Jazz_Theme",
     "Volcano_Theme"
 ];
+
+let sounds = [
+    "28_Pop1",
+    "29_Pop2",
+    "30_Pop3",
+    "31_Pop4",
+    "18_PlaceTower",
+    "62_Sell"
+];
 // ================================ SONG MANAGER END ================================
 
 
@@ -87,7 +96,7 @@ function SetupEventListeners() {
                 // play random song
                 let song = GetAudio(songs[Math.floor(Math.random() * songs.length)]);
                 song.loop();
-                song.setVolume(0.5);
+                song.setVolume(0.1);
                 break;
 
             case "player_left":
@@ -117,7 +126,10 @@ function SetupEventListeners() {
             case "play_sound":
                 let sound = GetAudio(args[1]);
                 if (sound != null)
+                {
+                    sound.setVolume(0.5);
                     sound.play();
+                }
                 break;
         }
     };
@@ -140,6 +152,9 @@ ReconnectLoop(); // initial connect
 function preload() {
     for (var i = 0; i < songs.length; i++)
         GetAudio(songs[i]);
+
+    for (var i = 0; i < sounds.length; i++)
+        GetAudio(sounds[i]);
 }
 
 
