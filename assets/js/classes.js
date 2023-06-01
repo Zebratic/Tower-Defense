@@ -46,11 +46,11 @@ class Bloon {
 }
 
 class Tower {
-    constructor(type, x, y) {
+    constructor(type, x, y, angle) {
         this.type = type;
         this.x = x;
         this.y = y;
-        this.angle = 0;
+        this.angle = angle;
         this.last_attack = 0;
     }
 
@@ -59,13 +59,14 @@ class Tower {
         // look at target
         this.angle = Math.atan2(y - this.y, x - this.x);
 
-        // check if able to attack
-        if (Date.now() - this.last_attack < this.attack_speed)
+        // check if able to attack this.attack_speed is in seconds
+        if (this.last_attack + this.attack_speed > Date.now() / 1000)
             return null;
 
-        // create projectile
-        this.last_attack = Date.now();
-        let projectile = new Projectile(this.x, this.y, this.angle, this.damage, this.projectile_speed);
+        this.last_attack = Date.now() / 1000;
+
+        // attack
+        let projectile = new Projectile(this.projectile_type, this.x, this.y, this.angle, this.damage, this.projectile_speed, this.projectile_health);
         return projectile;
     }
 
@@ -80,6 +81,8 @@ class Tower {
             this.range = tower.range;
             this.attack_speed = tower.attack_speed;
             this.projectile_speed = tower.projectile_speed;
+            this.projectile_health = tower.projectile_health;
+            this.projectile_type = tower.projectile_type;
             this.damage = tower.damage;
             this.sell_value = tower.sell_value;
         }
@@ -87,12 +90,14 @@ class Tower {
 }
 
 class Projectile {
-    constructor(x, y, angle, damage, speed) {
+    constructor(type, x, y, angle, damage, speed, health) {
+        this.type = type;
         this.x = x;
         this.y = y;
         this.angle = angle
         this.damage = damage;
         this.speed = speed;
+        this.health = health;
     }
 
     Move() {
@@ -100,7 +105,6 @@ class Projectile {
         this.y += this.speed * Math.sin(this.angle);
     }
 }
-
 
 function GetXYPositionByPercent(percent, map)
 {
@@ -128,13 +132,35 @@ function GetXYPositionByPercent(percent, map)
 
 var tower_list = {
     "dart_monkey": {
-        price: 200,
+        price: 170,
         range: 500,
-        attack_speed: 1,
-        projectile_speed: 0.01,
+        attack_speed: 0.5,
+        projectile_speed: 35,
+        projectile_health: 1,
+        projectile_type: "dart",
         damage: 1,
         sell_value: 100,
-    }
+    },
+    "ninja_monkey": {
+        price: 425,
+        range: 500,
+        attack_speed: 0.5,
+        projectile_speed: 35,
+        projectile_health: 4,
+        projectile_type: "shuriken",
+        damage: 2,
+        sell_value: 200,
+    },
+    "super_monkey": {
+        price: 2125,
+        range: 800,
+        attack_speed: 0.05,
+        projectile_speed: 35,
+        projectile_health: 1,
+        projectile_type: "dart",
+        damage: 1,
+        sell_value: 1000,
+    },
 };
 
 

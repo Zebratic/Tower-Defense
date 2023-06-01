@@ -1,4 +1,9 @@
-while (maps == undefined) { sleep(100); } // wait for maps to load
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+while (maps == undefined) { sleep(1) } // wait for maps to load
+
 
 // ================================ GLOBAL VARIABLES START ================================
 var connected = false;
@@ -21,14 +26,24 @@ let menu = {
     game_id_input: null,
     join_button: null,
     start_round_button: null,
+    sell_button: null,
+    
     dart_monkeys: [],
 };
 let cache = {
     textures: {},
+    audio: {},
 };
 // ================================ GLOBAL VARIABLES END ================================
 
 
+// ================================ SONG MANAGER START ================================
+let songs = [
+    "Main_Theme",
+    "Jazz_Theme",
+    "Volcano_Theme"
+];
+// ================================ SONG MANAGER END ================================
 
 
 // ================================ WEBSOCKET START ================================
@@ -58,6 +73,7 @@ function SetupEventListeners() {
                 menu.player_name_input.hide();
                 menu.game_id_input.hide();
                 menu.join_button.hide();
+
                 break;
 
             case "game_full":
@@ -67,6 +83,11 @@ function SetupEventListeners() {
             case "player_joined":
                 other_player = args[1];
                 menu.start_round_button.show();
+
+                // play random song
+                let song = GetAudio(songs[Math.floor(Math.random() * songs.length)]);
+                song.loop();
+                song.setVolume(0.5);
                 break;
 
             case "player_left":
@@ -75,6 +96,28 @@ function SetupEventListeners() {
 
             case "game_data":
                 game_data = JSON.parse(args[1]);
+                break;
+
+            case "round_started":
+                menu.start_round_button.attribute("disabled", "true");
+                menu.start_round_button.style("background-color", "gray");
+                break;
+
+            case "round_over":
+                menu.start_round_button.removeAttribute("disabled");
+                menu.start_round_button.style("background-color", "");
+                break;
+
+            case "game_over":
+                other_player = "";
+                game_id = "";
+                game_data = null;
+                break;
+
+            case "play_sound":
+                let sound = GetAudio(args[1]);
+                if (sound != null)
+                    sound.play();
                 break;
         }
     };
@@ -94,6 +137,10 @@ ReconnectLoop(); // initial connect
 // ================================ WEBSOCKET END ================================
 
 
+function preload() {
+    for (var i = 0; i < songs.length; i++)
+        GetAudio(songs[i]);
+}
 
 
 function setup() {
@@ -111,9 +158,26 @@ function setup() {
     menu.join_button.hide();
 
     menu.start_round_button = createButton("START");
-    menu.start_round_button.hide();
     menu.start_round_button.position(1660, 884);
     menu.start_round_button.size(220, 50);
+    menu.start_round_button.style("background-color", "green");
+    menu.start_round_button.style("font-weight", "bold");
+    menu.start_round_button.style("font-size", "20px");
+    menu.start_round_button.style("border-radius", "10px");
+    menu.start_round_button.style("position", "absolute");
+    menu.start_round_button.hide();
+
+    menu.sell_button = createButton("SELL");
+    menu.sell_button.position(1660, 10);
+    menu.sell_button.size(220, 50);
+    menu.sell_button.style("background-color", "red");
+    menu.sell_button.style("font-weight", "bold");
+    menu.sell_button.style("font-size", "20px");
+    menu.sell_button.style("border-radius", "10px");
+    menu.sell_button.style("position", "absolute");
+    menu.sell_button.hide();
+    
+
 }
 
 // on resize fit canvas to screen
@@ -165,7 +229,6 @@ function ConnectMenu()
         // set button onclick
         menu.join_button.mousePressed(function () {
             game_id = menu.game_id_input.value();
-            
             ws.send("join|" + game_id + "|" + menu.player_name_input.value());
         });
 
@@ -267,7 +330,8 @@ function GameLoop()
     fill(0);
     textSize(32);
     textAlign(LEFT, TOP);
-    strokeWeight(3);
+    strokeWeight(4);
+    stroke(0);
     fill(255, 255, 0);
     text("💰 " + game_data.money, 30, 10);
     fill(255, 0, 0);
@@ -282,39 +346,10 @@ function GameLoop()
     // START BUTTON
     menu.start_round_button.mousePressed(function () {
         ws.send("update_data|start_round");
+        menu.start_round_button.attribute("disabled", "true");
+        menu.start_round_button.style("background-color", "gray");
     });
     
-
-    // ========== BUY TOWER BUTTONS ==========
-    for (var i = 0; i < Object.keys(tower_list).length; i++)
-    {
-        let tower = tower_list[Object.keys(tower_list)[i]];
-        let sprite = GetTexture("towers/" + Object.keys(tower_list)[i]);
-        if (sprite == null)
-            continue;
-
-        // from x = 1662, y = 90
-        let x = 1662 + (i % 2) * 110;
-        let y = 90 + Math.floor(i / 2) * 110;
-        
-        image(sprite, x, y, 110, 110);
-
-        // draw price bottom right of tower
-        fill(0);
-        textSize(16);
-        textAlign(RIGHT, BOTTOM);
-        strokeWeight(3);
-        fill(255, 255, 0);
-        text(tower.price, x + 100, y + 100);
-        strokeWeight(1);
-
-        // if dragged
-        if (mouseIsPressed && mouseX > x && mouseX < x + sprite.width && mouseY > y && mouseY < y + sprite.height)
-        {
-            drag_handler.tower = tower;
-            drag_handler.is_dragging = true;
-        }
-    }
 
     // ========== TOWERS ==========
     if (game_data.towers != null)
@@ -361,50 +396,80 @@ function GameLoop()
     }
 
     // if mouse clicked on a tower, select it in drag_handler
-    if (mouseIsPressed)
+    if (mouseIsPressed && !drag_handler.is_dragging)
     {
-        if (!drag_handler.is_dragging)
+        let found_tower = false;
+        for (var i = 0; i < game_data.towers.length; i++)
         {
-            let found_tower = false;
-            for (var i = 0; i < game_data.towers.length; i++)
+            let tower = game_data.towers[i];
+            let sprite = GetTexture("towers/" + tower.type);
+            if (sprite != null)
             {
-                let tower = game_data.towers[i];
-                let sprite = GetTexture("towers/" + tower.type);
-                if (sprite != null)
+                if (mouseX > tower.x - sprite.width / 2 && mouseX < tower.x + sprite.width / 2 && mouseY > tower.y - sprite.height / 2 && mouseY < tower.y + sprite.height / 2)
                 {
-                    if (mouseX > tower.x - sprite.width / 2 && mouseX < tower.x + sprite.width / 2 && mouseY > tower.y - sprite.height / 2 && mouseY < tower.y + sprite.height / 2)
-                    {
-                        found_tower = true;
-                        drag_handler.tower = tower;
-                        drag_handler.is_selected = true;
-                        break;
-                    }
+                    found_tower = true;
+                    drag_handler.tower = tower;
+                    drag_handler.is_selected = true;
+                    break;
                 }
             }
-
-            if (!found_tower)
-                drag_handler.is_selected = false;
         }
+
+        if (!found_tower)
+        {
+            drag_handler.is_selected = false;
+            drag_handler.tower = null;
+            menu.sell_button.hide();
+        }                
     }
 
-    // if tower is selected, draw range circle
+    // if tower is selected
     if (drag_handler.is_selected)
     {
-        let sprite = GetTexture("towers/" + drag_handler.tower.type);
-        if (sprite != null)
+        //draw a sell button
+        // update text to show sell value
+        if (tower_list[drag_handler.tower.type] != null)
         {
-            fill(0, 0, 0, 100);
-            circle(drag_handler.tower.x, drag_handler.tower.y, drag_handler.tower.range);
+            menu.sell_button.html("SELL $" + tower_list[drag_handler.tower.type].sell_value);
+            menu.sell_button.show();
+            menu.sell_button.mousePressed(function () {
+                ws.send("update_data|sell_tower|" + drag_handler.tower.x + "|" + drag_handler.tower.y);
+            });
         }
+
+        // draw range circle
+        fill(0, 0, 0, 100);
+        circle(drag_handler.tower.x, drag_handler.tower.y, drag_handler.tower.range);
     }
 
 
     // ========== PROJECTILES ==========
+    if (game_data.projectiles != null)
+    {
+        for (var i = 0; i < game_data.projectiles.length; i++)
+        {
+            let projectile = game_data.projectiles[i];
+            if (projectile == null)
+                continue;
+
+            projectile = new Projectile(projectile.type, projectile.x, projectile.y, projectile.angle, projectile.damage, projectile.speed, projectile.health);
+            let sprite = GetTexture("other/" + projectile.type);
+            if (sprite != null)
+            {
+                // draw projectile so it looks at projectile.angle and is centered on projectile.x and projectile.y
+                push();
+                translate(projectile.x, projectile.y);
+                rotate(projectile.angle + Math.PI / 2);
+                image(sprite, -sprite.width / 2, -sprite.height / 2, sprite.width, sprite.height);
+                pop();
+            }
+        }
+    }
 
 
 
     // ========== DRAG ENTITY ==========
-    if (drag_handler.is_dragging)
+    if (drag_handler.is_dragging && drag_handler.tower != null)
     {
         if (drag_handler.tower != null)
         {
@@ -450,6 +515,7 @@ function GameLoop()
                 if (mouse_pos[0] < 0 || mouse_pos[0] > width || mouse_pos[1] < 0 || mouse_pos[1] > height)
                     can_place = false;
                     
+                // check if mouse is on map
                 if (mouse_pos[0] > 1642 || mouse_pos[0] < 24 || mouse_pos[1] > 951 || mouse_pos[1] < 50)
                     can_place = false;
                 
@@ -486,6 +552,48 @@ function GameLoop()
 
     if (!mouseIsPressed)
         drag_handler.is_dragging = false;
+
+
+    // ========== OVERLAY ==========
+    let overlay_img = GetTexture("maps/overlay");
+    if (overlay_img != null)
+        image(overlay_img, 0, 0, overlay_img.width, overlay_img.height);
+
+
+
+    // ========== BUY TOWER BUTTONS ==========
+    for (var i = 0; i < Object.keys(tower_list).length; i++)
+    {
+        let tower = tower_list[Object.keys(tower_list)[i]];
+        let sprite = GetTexture("towers/" + Object.keys(tower_list)[i]);
+        if (sprite == null)
+            continue;
+
+        // from x = 1662, y = 90
+        let x = 1662 + (i % 2) * 110;
+        let y = 90 + Math.floor(i / 2) * 110;
+        
+        image(sprite, x, y, 110, 110);
+
+        // draw price bottom right of tower
+        fill(0);
+        textSize(28);
+        textAlign(RIGHT, BOTTOM);
+        strokeWeight(3);
+        fill(255, 255, 0);
+        text(tower.price, x + 100, y + 100);
+        strokeWeight(1);
+
+        // if dragged
+        if (!drag_handler.is_dragging && !drag_handler.is_selected)
+        {
+            if (mouseIsPressed && mouseX > x && mouseX < x + sprite.width && mouseY > y && mouseY < y + sprite.height)
+            {
+                drag_handler.tower = tower;
+                drag_handler.is_dragging = true;
+            }
+        }
+    }
 }
 
 

@@ -37,19 +37,30 @@ const distToSegment = mapsfile.distToSegment;
 
 
 /////////////////// LOGGER ///////////////////
-function BettterLog(type, str) {
+function BetterLog(type, str) {
     console.log("\x1b[90m[" + new Date().toLocaleString() + "] " + colors[type] + str + "\x1b[0m");
 }
 /////////////////// LOGGER ///////////////////
 
 
 /////////////////// WEBSOCKET ///////////////////
+function SendPacketToPlayers(game, msg)
+{
+    for (const [key, value] of Object.entries(open_websockets))
+        for (var i = 0; i < game.players.length; i++)
+            if (game.players[i].uid == value.uid)
+                value.send(msg);
+}
+
+
+
+
 app.ws('/', function (ws, req) {
-    BettterLog("success", "Websocket Connection Received from " + req.connection.remoteAddress.replace("::ffff:", ""));
+    BetterLog("success", "Websocket Connection Received from " + req.connection.remoteAddress.replace("::ffff:", ""));
     if (ws.uid == undefined)
     {
         ws.uid = Math.floor(Math.random() * 8999 + 1000);
-        BettterLog("success", "Assigned UID " + ws.uid + " to " + req.connection.remoteAddress.replace("::ffff:", ""));
+        BetterLog("success", "Assigned UID " + ws.uid + " to " + req.connection.remoteAddress.replace("::ffff:", ""));
     }
 
     // add websocket to open_websockets
@@ -78,7 +89,12 @@ app.ws('/', function (ws, req) {
                     ],
                     timestamp: Math.floor(Date.now() / 1000),
                 }
-                BettterLog("success", "Created new game_id '" + game_id + "' from IP: " + ip);
+
+                // roll random map
+                let map_keys = Object.keys(maps);
+                games[game_id].map = map_keys[Math.floor(Math.random() * map_keys.length)];
+
+                BetterLog("success", "New game started on game_id '" + game_id + "' on map '" + games[game_id].map + "' by player '" + username + "'");
                 ws.send("game_created|" + game_id);
             }
             else {
@@ -89,7 +105,7 @@ app.ws('/', function (ws, req) {
                         username: username,
                         uid: ws.uid
                     });
-                    BettterLog("success", "Added player to game_id '" + game_id + "' from IP: " + ip);
+                    BetterLog("success", "Player '" + username + "' joined game_id '" + game_id + "'");
                     ws.send("game_created|" + game_id);
 
                     // send joined message to other player
@@ -104,7 +120,7 @@ app.ws('/', function (ws, req) {
                     }
                 }
                 else {
-                    BettterLog("error", "Game '" + game_id + "' is full");
+                    BetterLog("error", "Game '" + game_id + "' is full");
                     ws.send("game_full");
                 }
             }
@@ -115,9 +131,6 @@ app.ws('/', function (ws, req) {
             const game_id = msg.split('|')[1].toLowerCase();
             if (games[game_id] != undefined)
             {
-                // HARDCODED MAP
-                games[game_id].map = "monkey_meadows";
-
                 games[game_id].timestamp = timestamp;
             	ws.send("game_data|" + JSON.stringify(games[game_id]));
             }
@@ -128,7 +141,6 @@ app.ws('/', function (ws, req) {
 
         // update_data|sell_tower|58
         if (msg.startsWith('update_data|')) {
-            BettterLog("normal", "Received update_data from " + req.connection.remoteAddress.replace("::ffff:", "") + " | " + msg);
             let action = msg.split('|')[1].toLowerCase();
 
             // get game from uid
@@ -136,14 +148,17 @@ app.ws('/', function (ws, req) {
             let player_index = -1;
             let player_name = "";
             for (const [key, value] of Object.entries(games)) {
-                for (var i = 0; i < value.players.length; i++) {
-                    if (value.players[i].uid == ws.uid)
-                    {
-                        game_id = key;
-                        player_index = i;
-                        player_name = value.players[i].username;
+                try {
+                    for (var i = 0; i < value.players.length; i++) {
+                        if (value.players[i].uid == ws.uid)
+                        {
+                            game_id = key;
+                            player_index = i;
+                            player_name = value.players[i].username;
+                        }
                     }
                 }
+                catch (e) { }
             }
 
 
@@ -156,29 +171,57 @@ app.ws('/', function (ws, req) {
                     tower.y = parseInt(msg.split('|')[4].toLowerCase());
                     tower.DefineTower(type);
 
-                    BettterLog("normal", "Player " + player_name + " has " + games[game_id].money + " money");
                     if (games[game_id].money < tower.price)
                     {
-                        BettterLog("error", "Player " + player_name + " tried to place a tower but does not have enough money");
+                        BetterLog("error", "Player " + player_name + " tried to place a tower but does not have enough money");
                         return;
                     }
 
+                    // if towers is null, set to empty array
+                    if (games[game_id].towers == null)
+                        games[game_id].towers = [];
+
+                    // play place tower sound
+                    SendPacketToPlayers(games[game_id], "play_sound|18_PlaceTower");
+
                     games[game_id].money -= tower.price; // remove money from player
                     games[game_id].towers.push(tower); // add tower to game
+                    BetterLog("normal", "Player " + player_name + " placed a tower on game " + game_id + " | Money: " + games[game_id].money);
                     break;
 
                 case "sell_tower":
+                    let x = parseInt(msg.split('|')[2].toLowerCase());
+                    let y = parseInt(msg.split('|')[3].toLowerCase());
+
+                    // if towers is null, set to empty array
+                    if (games[game_id].towers == null)
+                        games[game_id].towers = [];
+
+                    for (var i = 0; i < games[game_id].towers.length; i++)
+                    {
+                        if (games[game_id].towers[i].x == x && games[game_id].towers[i].y == y)
+                        {
+                            SendPacketToPlayers(games[game_id], "play_sound|62_Sell");
+                            BetterLog("normal", "Player " + player_name + " sold a tower for " + games[game_id].towers[i].sell_value + " money");
+                            games[game_id].money += games[game_id].towers[i].sell_value;
+                            games[game_id].towers.splice(i, 1);
+                            break;
+                        }
+                    }
+
                     break;
 
                 case "upgrade_tower":
-                    break;
-
-                case "donate_money":
+                    /* TODO: */
                     break;
 
                 case "start_round":
                     // check if all bloons are popped
                     let all_bloons_popped = true;
+                    // if bloons is null, set to empty array
+                    if (games[game_id].wave.bloons == null)
+                        games[game_id].wave.bloons = [];
+
                     for (const [key, value] of Object.entries(games[game_id].wave.bloons)) {
                         if (!value.popped)
                         {
@@ -191,10 +234,11 @@ app.ws('/', function (ws, req) {
                     {
                         games[game_id].wave.round++;
                         games[game_id].wave.started = true;
-                        BettterLog("normal", "Player " + player_name + " started round " + games[game_id].wave.round + " on game " + game_id);
+                        games[game_id].wave.running = true;
+                        BetterLog("normal", "Player " + player_name + " started round " + games[game_id].wave.round + " on game " + game_id);
                     }
                     else
-                        BettterLog("error", "Player " + player_name + " tried to start round " + games[game_id].wave.round + " on game " + game_id + " but not all bloons are popped");
+                        BetterLog("error", "Player " + player_name + " tried to start round " + games[game_id].wave.round + " on game " + game_id + " but not all bloons are popped");
 
                     break;
             }
@@ -202,34 +246,37 @@ app.ws('/', function (ws, req) {
     });
 
     ws.on('close', function () {
-        BettterLog("warning", "Websocket Connection Closed from: " + req.connection.remoteAddress.replace("::ffff:", ""));
+        BetterLog("warning", "Websocket Connection Closed from: " + req.connection.remoteAddress.replace("::ffff:", ""));
 
         // find game_id and remove player
         for (const [key, value] of Object.entries(games)) {
-            for (var i = 0; i < value.players.length; i++) {
-                if (value.players[i].uid == ws.uid)
-                {
-                    let game_id = key;
-                    BettterLog("warning", "Removed player from game_id '" + key + "' due to websocket close");
-                    value.players.splice(i, 1);
-
-                    // send left message to other player
-                    for (const [key, value] of Object.entries(open_websockets)) {
-                        try {
-                            if (value.uid == games[game_id].players[0].uid)
-                            value.send("player_left"); // send to other player
-                        }
-                        catch (e) { }
-                    }
-
-                    // if game is empty, remove game
-                    if (value.players.length == 0)
+            try {
+                for (var i = 0; i < value.players.length; i++) {
+                    if (value.players[i].uid == ws.uid)
                     {
-                        delete games[game_id]
-                        BettterLog("warning", "Removed game_id '" + game_id + "' due to inactivity");
+                        let game_id = key;
+                        BetterLog("warning", "Removed player from game_id '" + key + "' due to websocket close");
+                        value.players.splice(i, 1);
+    
+                        // send left message to other player
+                        for (const [key, value] of Object.entries(open_websockets)) {
+                            try {
+                                if (value.uid == games[game_id].players[0].uid)
+                                    value.send("player_left"); // send to other player
+                            }
+                            catch (e) { }
+                        }
+    
+                        // if game is empty, remove game
+                        if (value.players.length == 0)
+                        {
+                            delete games[game_id]
+                            BetterLog("warning", "Removed game_id '" + game_id + "' due to inactivity");
+                        }
                     }
                 }
             }
+            catch (e) { }
         }
 
         // remove websocket from open_websockets
@@ -237,7 +284,7 @@ app.ws('/', function (ws, req) {
     });
 
     ws.on('error', function (err) {
-        BettterLog("error", "Websocket Connection Error from: " + req.connection.remoteAddress.replace("::ffff:", ""));
+        BetterLog("error", "Websocket Connection Error from: " + req.connection.remoteAddress.replace("::ffff:", ""));
     });
 });
 /////////////////// WEBSOCKET ///////////////////
@@ -249,7 +296,7 @@ app.get('/', function (req, res, next) {
     let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
     res.send(html);
-    BettterLog("success", req.connection.remoteAddress.replace("::ffff:", "") + " opened the page");
+    BetterLog("success", req.connection.remoteAddress.replace("::ffff:", "") + " opened the page");
 });
 /////////////////// LOAD MAIN PAGE ///////////////////
 
@@ -268,22 +315,13 @@ function LogStatus(detailed)
 {
     if (detailed)
     {
-        BettterLog("normal", "There is currently " + Object.keys(games).length + " active games");
+        BetterLog("normal", "There is currently " + Object.keys(games).length + " active games");
         for (const [key, value] of Object.entries(games)) {
-            let last_seen = Math.floor(Date.now() / 1000) - value.timestamp;
-
-            // if last seen is over 10 seconds, print in red
-            let type = "normal";
-            if (last_seen > 30)
-                type = "error";
-            else if (last_seen > 30)
-                type = "warning";
-
-            BettterLog(type, " > [" + key + "] IP: " + value.ip + " | Last seen " + last_seen + " seconds ago");
+            BetterLog("normal", "Game " + key + " has " + value.players.length + " players");
         }
     }
     else
-        BettterLog("normal", "There is currently " + Object.keys(games).length + " active games");
+        BetterLog("normal", "There is currently " + Object.keys(games).length + " active games");
 }
 /////////////////// LOGGER ///////////////////
 
@@ -302,7 +340,7 @@ process.stdin.on('keypress', (str, key) => {
 
     // default exit handler
     if (key.ctrl && key.name === 'c') {
-        BettterLog("error", "Exiting...");
+        BetterLog("error", "Exiting...");
         process.exit();
     }
 });
@@ -312,12 +350,12 @@ process.stdin.on('keypress', (str, key) => {
 
 /////////////////// START SERVER ///////////////////
 app.listen(port, function () {
-    BettterLog("success", "Started server on port " + port);
+    BetterLog("success", "Started server on port " + port);
 });
 
 if (is_pm2)
 {
-    BettterLog("warning", "Detected PM2, keypress handlers will not work");
+    BetterLog("warning", "Detected PM2, keypress handlers will not work");
     setInterval(function () { LogStatus(true); }, 10000);
 }
 
@@ -336,8 +374,10 @@ function GameLoop(game_id, first_run = false)
     {
         if (first_run)
         {
+            game.wave_data = structuredClone(wave_data);
             game.wave = {
                 started: true,
+                running: true,
                 round: 0,
                 bloons: []
             }
@@ -347,27 +387,46 @@ function GameLoop(game_id, first_run = false)
             games[game_id] = game; // save game
         }
 
-        if (game.wave.round == null)
-            game.wave.round = 0;
-            
-        let current_wave = wave_data[game.wave.round];
-        if (current_wave != null)
+        if (game.wave_data != null)
         {
             if (game.wave.started)
             {
                 game.wave.started = false;
                 game.wave.bloons = [];
                 game.wave.last_spawn = timestamp;
-                game.wave.spawn_interval = current_wave.interval;
+                game.wave.spawn_interval = 0;
                 game.wave.total_bloons = 0;
             
                 // get total bloons
-                for (var i = 1; i <= 9; i++)
-                    game.wave.total_bloons += parseInt(current_wave[i]);
+                if (game.wave.round > 0)
+                {
+                    // check if round exists
+                    if (game.wave_data[game.wave.round] != undefined)
+                    {
+                        for (const [key, value] of Object.entries(game.wave_data[game.wave.round])) {
+                            if (key == "interval")
+                            {
+                                game.wave.spawn_interval = value;
+                                continue;
+                            }
+        
+                            // check if value is a numebr
+                            if (isNaN(value))
+                                continue;
+
+                            game.wave.total_bloons += parseInt(value);
+                        }
+                    }
+
+                    // send round_started to players
+                    SendPacketToPlayers(game, "round_started|" + game.wave.round);
+                   
+                    BetterLog("warning", "Starting round " + game.wave.round + " on game " + game_id + " | Total Bloons: " + game.wave.total_bloons);
+                }
             
                 games[game_id] = game; // save game
             }
-        
+
             // spawn bloons
             if (game.wave.bloons.length < game.wave.total_bloons)
             {
@@ -379,18 +438,25 @@ function GameLoop(game_id, first_run = false)
                 {
                     game.wave.last_spawn = timestamp;
                     // get bloon to spawn
-                    let bloon_to_spawn = 0;
-                    for (var i = 1; i <= 9; i++)
-                    {
-                        if (current_wave[i] > 0)
+                    let bloon_to_spawn = null;
+                    for (const [key, value] of Object.entries(game.wave_data[game.wave.round])) {
+                        // skip interval
+                        if (key == "interval")
+                            continue;
+
+                        if (value > 0)
                         {
-                            bloon_to_spawn = i;
+                            bloon_to_spawn = key;
                             break;
                         }
                     }
-                
-                    game.wave.bloons.push(new Bloon(bloon_to_spawn));
-                    current_wave[bloon_to_spawn]--;
+
+                    // if bloon to spawn is not null, spawn it
+                    if (bloon_to_spawn != null)
+                    {
+                        game.wave.bloons.push(new Bloon(bloon_to_spawn));
+                        game.wave_data[game.wave.round][bloon_to_spawn]--;
+                    }
                 }
                 games[game_id] = game; // save game
             }
@@ -407,7 +473,21 @@ function GameLoop(game_id, first_run = false)
                     {
                         game.wave.bloons[key].popped = true;
                         game.health -= value.health;
-                        BettterLog("error", "Bloon reached the end on game " + game_id + " | Health: " + game.health);
+                        BetterLog("error", "Bloon reached the end on game " + game_id + " | Health: " + game.health);
+
+                        // if last bloon, end round
+                        let all_bloons_popped = true;
+                        for (const [key3, value3] of Object.entries(game.wave.bloons)) {
+                            if (!value3.popped)
+                            {
+                                all_bloons_popped = false;
+                                break;
+                            }
+                        }
+
+                        if (all_bloons_popped)
+                            SendPacketToPlayers(game, "round_over");
+
                     }
                     games[game_id] = game; // save game
                 }
@@ -420,8 +500,11 @@ function GameLoop(game_id, first_run = false)
                 game.health = 0;
                 game.money = 0;
                 game.wave = null;
-                BettterLog("error", "Game id " + game_id + " has ended");
+                BetterLog("error", "Game id " + game_id + " has ended");
                 games[game_id] = game; // save game
+
+                // send game over to players
+                SendPacketToPlayers(game, "game_over");
             }
 
             // loop all towers to check which bloon has the highest progress value and is in range
@@ -453,8 +536,84 @@ function GameLoop(game_id, first_run = false)
                 // if furthest bloon is not null, attack it
                 if (furthest_bloon != null)
                 {
-                    value.Attack(furthest_bloon_position[0], furthest_bloon_position[1]);
-                    games[game_id].towers[key] = value; // save tower
+                    let projectile = value.Attack(furthest_bloon_position[0], furthest_bloon_position[1]);
+                    if (projectile != null)
+                        game.projectiles.push(projectile);
+
+                    games[game_id] = game;
+                }
+            }
+
+            // loop all projectiles
+            if (timestamp != last_tick) {
+                if (game.projectiles == null)
+                    game.projectiles = [];
+
+                for (const [key, value] of Object.entries(game.projectiles)) {
+                    let old_pos = [value.x, value.y];
+                    value.Move();
+
+                    // check if projectile is out of bounds
+                    if (value.x > 1642 || value.x < 24 || value.y > 951 || value.y < 50)
+                    {
+                        delete game.projectiles[key];
+                        games[game_id] = game; // save game
+                        continue;
+                    }
+
+                    // check if projectile is in range of bloon
+                    for (const [key2, value2] of Object.entries(game.wave.bloons)) {
+                        if (!value2.popped)
+                        {
+                            let bloon_position = value2.GetPosition(mapsfile.maps[game.map]);
+                            let distance = Math.sqrt(Math.pow(value.x - bloon_position[0], 2) + Math.pow(value.y - bloon_position[1], 2));
+                            if (distance <= 10 || distToSegment(value.x, value.y, old_pos[0], old_pos[1], bloon_position[0], bloon_position[1]) <= 10)
+                            {
+                                // play random pop sound
+                                let pop = Math.floor(Math.random() * 4 + 1);
+                                let pop_sound = (27 + pop) + "_Pop" + pop;
+                                SendPacketToPlayers(game, "play_sound|" + pop_sound);
+
+                                // add money to player
+                                game.money += value2.health;
+
+                                // remove damage from bloon
+                                game.wave.bloons[key2].health -= value.damage;
+                                if (game.wave.bloons[key2].health <= 0)
+                                    game.wave.bloons[key2].popped = true;
+
+                                // loop all bloons to check if they are popped
+                                let all_bloons_popped = true;
+                                for (const [key3, value3] of Object.entries(game.wave.bloons)) {
+                                    if (!value3.popped)
+                                    {
+                                        all_bloons_popped = false;
+                                        break;
+                                    }
+                                }
+                            
+                                if (all_bloons_popped && game.wave.running)
+                                {
+                                    game.money += 100 + game.wave.round;
+                                    BetterLog("success", "All bloons popped on game " + game_id + " | Money: " + game.money);
+
+                                    // send round_over to players
+                                    SendPacketToPlayers(game, "round_over");
+                                    game.wave.running = false;
+                                }
+
+                                // damage projectile and remove if health is 0 or less
+                                game.projectiles[key].health--;
+                                if (game.projectiles[key].health <= 0)
+                                {
+                                    // remove projectile from projectiles
+                                    delete game.projectiles[key];
+                                    games[game_id] = game; // save game
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
