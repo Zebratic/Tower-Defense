@@ -30,7 +30,8 @@ var menu = {
     
     dart_monkeys: [],
     bananas: [],
-    bloons: []
+    bloons: [],
+    respawn_bloons_button: null
 };
 var cache = {
     textures: {},
@@ -42,6 +43,8 @@ var banner_sway_angle = 0;
 
 var banana_sway_left = true;
 var banana_sway_paused = false;
+
+var all_menu_bloons_spawned = false;
 // ================================ GLOBAL VARIABLES END ================================
 
 
@@ -92,7 +95,7 @@ function SetupEventListeners() {
                 menu.player_name_input.hide();
                 menu.game_id_input.hide();
                 menu.join_button.hide();
-
+                menu.respawn_bloons_button.hide();
                 break;
 
             case "game_full":
@@ -184,7 +187,6 @@ function setup() {
     createCanvas(windowWidth, windowHeight);
 
     menu.player_name_input = createInput("");
-    menu.player_name_input.hide();
     menu.player_name_input.attribute("placeholder", "Player Name");
     menu.player_name_input.attribute("maxlength", "15");
     menu.player_name_input.style("position", "absolute");
@@ -197,9 +199,9 @@ function setup() {
     menu.player_name_input.style("padding", "10px");
     menu.player_name_input.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
     menu.player_name_input.style("text-align", "center");
+    menu.player_name_input.hide();
 
     menu.game_id_input = createInput("");
-    menu.game_id_input.hide();
     menu.game_id_input.attribute("placeholder", "Game ID");
     menu.game_id_input.attribute("maxlength", "8");
     menu.game_id_input.style("position", "absolute");
@@ -212,9 +214,9 @@ function setup() {
     menu.game_id_input.style("padding", "10px");
     menu.game_id_input.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
     menu.game_id_input.style("text-align", "center");
+    menu.game_id_input.hide();
 
     menu.join_button = createButton("Join");
-    menu.join_button.hide();
     menu.join_button.style("background-color", "green");
     menu.join_button.style("font-weight", "bold");
     menu.join_button.style("font-size", "20px");
@@ -224,6 +226,7 @@ function setup() {
     menu.join_button.style("outline", "none");
     menu.join_button.style("padding", "10px");
     menu.join_button.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
+    menu.join_button.hide();
 
     menu.start_round_button = createButton("START");
     menu.start_round_button.position(1660, 884);
@@ -244,6 +247,20 @@ function setup() {
     menu.sell_button.style("border-radius", "10px");
     menu.sell_button.style("position", "absolute");
     menu.sell_button.hide();
+
+    menu.respawn_bloons_button = createButton("Respawn Bloons");
+    menu.respawn_bloons_button.position(width / 2 - 110, height - 70);
+    menu.respawn_bloons_button.size(220, 50);
+    menu.respawn_bloons_button.style("background-color", "rgb(255, 0, 0, 0.5)");
+    menu.respawn_bloons_button.style("font-weight", "bold");
+    menu.respawn_bloons_button.style("font-size", "20px");
+    menu.respawn_bloons_button.style("border-radius", "10px");
+    menu.respawn_bloons_button.style("position", "absolute");
+    menu.respawn_bloons_button.style("border", "none");
+    menu.respawn_bloons_button.style("outline", "none");
+    menu.respawn_bloons_button.style("padding", "10px");
+    menu.respawn_bloons_button.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
+    menu.respawn_bloons_button.hide();
 }
 
 function mousePressed()
@@ -349,6 +366,84 @@ function ConnectMenu()
         }
     }
 
+
+
+    // draw bloons walks around like a snake
+    let amount = 10;
+    if (menu.bloons.length < amount && !all_menu_bloons_spawned)
+    {
+        // add new bloon
+        let sprite_pos = [mouseX == 0 ? width / 2 : mouseX, mouseY == 0 ? height / 2 : mouseY];
+        let health = 9;
+        let sprite = GetTexture("bloons/" + health);
+        menu.bloons.push({ pos: sprite_pos, sprite: sprite, health: health, immune: 0 });
+
+        if (menu.bloons.length == amount)
+            all_menu_bloons_spawned = true;
+    }
+
+    // move all bloons towards bloon behind it
+    for (var i = 0; i < menu.bloons.length; i++)
+    {
+        let sprite_pos = menu.bloons[i].pos;
+        let prev_sprite_pos = [mouseX == 0 ? width / 2 : mouseX, mouseY == 0 ? height / 2 : mouseY];
+        if (i != 0)
+            prev_sprite_pos = menu.bloons[i - 1].pos;
+
+        menu.bloons[i].speed = 2 * (dist(sprite_pos[0], sprite_pos[1], prev_sprite_pos[0], prev_sprite_pos[1]) / 10);
+
+        let angle_to_prev_bloon = Math.atan2(prev_sprite_pos[1] - sprite_pos[1], prev_sprite_pos[0] - sprite_pos[0]);
+
+        // move bloon slowly towards mouse
+        sprite_pos[0] += Math.cos(angle_to_prev_bloon) * menu.bloons[i].speed;
+        sprite_pos[1] += Math.sin(angle_to_prev_bloon) * menu.bloons[i].speed;
+
+        // render bloon
+        image(menu.bloons[i].sprite, sprite_pos[0] - menu.bloons[i].sprite.width / 2, sprite_pos[1] - menu.bloons[i].sprite.height / 2, menu.bloons[i].sprite.width, menu.bloons[i].sprite.height);
+        
+        if (menu.bloons[i].immune > 0)
+            menu.bloons[i].immune--;
+    }
+
+    // check if bloon is within 50 pixels of monkey
+    for (var i = 0; i < menu.bloons.length; i++)
+    {
+        // check if monkey is within 50 pixels of a bloon
+        for (var j = 0; j < menu.dart_monkeys.length; j++)
+        {
+            // if menu.bloons[i] is null, skip it
+            if (menu.bloons[i] == null)
+                continue;
+
+            let sprite_pos = menu.bloons[i].pos;
+            let monkey_pos = menu.dart_monkeys[j].pos;
+            let distance = dist(sprite_pos[0], sprite_pos[1], monkey_pos[0] + menu.dart_monkeys[j].sprite.width / 2, monkey_pos[1] + menu.dart_monkeys[j].sprite.height / 2);
+            if (distance < 50 && menu.bloons[i].immune == 0)
+            {
+                // if bloon is within 50 pixels of monkey, pop it
+                menu.bloons[i].health--;
+                menu.bloons[i].sprite = GetTexture("bloons/" + menu.bloons[i].health);
+                menu.bloons[i].immune = 30;
+                // play pop sound
+                let sound = GetAudio("28_Pop1");
+                if (sound != null)
+                {
+                    sound.setVolume(0.1);
+                    sound.play();
+                }
+
+                // if bloon has no health left, remove it
+                if (menu.bloons[i].health <= 0)
+                {
+                    menu.bloons.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+    }
+
+
+
     
     // draw monkeys on screen
     if (menu.dart_monkeys.length < 20)
@@ -431,61 +526,6 @@ function ConnectMenu()
     }
 
 
-    // draw bloons walks around like a snake
-    if (menu.bloons.length < 50)
-    {
-        // add new bloon
-        let sprite_pos = [random(0, width), random(0, height)];
-        let sprite = GetTexture("bloons/1");
-        menu.bloons.push({ pos: sprite_pos, sprite: sprite, health: 1 });
-    }
-
-    // make index 0 move towards mouse
-    if (menu.bloons.length > 0)
-    {
-        let sprite_pos = menu.bloons[0].pos;
-        let mouse_pos = [mouseX, mouseY];
-
-        // if mouse is not on screen, move towards center
-        if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
-            mouse_pos = [width / 2, height / 2];
-
-        menu.bloons[0].speed = 2 * (dist(sprite_pos[0], sprite_pos[1], mouse_pos[0], mouse_pos[1]) / 10);
-
-        let angle_to_mouse = Math.atan2(mouse_pos[1] - sprite_pos[1], mouse_pos[0] - sprite_pos[0]);
-
-        // move bloon slowly towards mouse
-        sprite_pos[0] += Math.cos(angle_to_mouse) * menu.bloons[0].speed;
-        sprite_pos[1] += Math.sin(angle_to_mouse) * menu.bloons[0].speed;
-
-        // render bloon
-        image(menu.bloons[0].sprite, sprite_pos[0] - menu.bloons[0].sprite.width / 2, sprite_pos[1] - menu.bloons[0].sprite.height / 2, menu.bloons[0].sprite.width, menu.bloons[0].sprite.height);
-    }
-
-    // move all bloons towards bloon behind it
-    for (var i = 1; i < menu.bloons.length; i++)
-    {
-        let sprite_pos = menu.bloons[i].pos;
-        let prev_sprite_pos = menu.bloons[i - 1].pos;
-
-        menu.bloons[i].speed = 2 * (dist(sprite_pos[0], sprite_pos[1], prev_sprite_pos[0], prev_sprite_pos[1]) / 10);
-
-        let angle_to_prev_bloon = Math.atan2(prev_sprite_pos[1] - sprite_pos[1], prev_sprite_pos[0] - sprite_pos[0]);
-
-        // move bloon slowly towards mouse
-        sprite_pos[0] += Math.cos(angle_to_prev_bloon) * menu.bloons[i].speed;
-        sprite_pos[1] += Math.sin(angle_to_prev_bloon) * menu.bloons[i].speed;
-
-        // render bloon
-        image(menu.bloons[i].sprite, sprite_pos[0] - menu.bloons[i].sprite.width / 2, sprite_pos[1] - menu.bloons[i].sprite.height / 2, menu.bloons[i].sprite.width, menu.bloons[i].sprite.height);
-
-    }
-    
-
-        
-        
-
-
 
     // if connected and game_id is not set show connect screen
     if (connected && game_id == "") {
@@ -507,11 +547,17 @@ function ConnectMenu()
         menu.player_name_input.show();
         menu.game_id_input.show();
         menu.join_button.show();
+        menu.respawn_bloons_button.show();
 
         // set button onclick
         menu.join_button.mousePressed(function () {
             game_id = menu.game_id_input.value();
             ws.send("join|" + game_id + "|" + menu.player_name_input.value());
+        });
+
+        menu.respawn_bloons_button.mousePressed(function () {
+            all_menu_bloons_spawned = false;
+            menu.bloons = [];
         });
     }
 
