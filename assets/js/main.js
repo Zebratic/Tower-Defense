@@ -52,6 +52,7 @@ let sounds = [
     "18_PlaceTower",
     "62_Sell"
 ];
+let song_player = null;
 // ================================ SONG MANAGER END ================================
 
 
@@ -94,13 +95,18 @@ function SetupEventListeners() {
                 menu.start_round_button.show();
 
                 // play random song
-                let song = GetAudio(songs[Math.floor(Math.random() * songs.length)]);
-                song.loop();
-                song.setVolume(0.1);
+                song_player= GetAudio(songs[Math.floor(Math.random() * songs.length)]);
+                song_player.loop();
+                song_player.setVolume(0.1);
                 break;
 
             case "player_left":
                 other_player = "";
+                game_id = "";
+                game_data = null;
+                menu.start_round_button.hide();
+                if (song_player != null)
+                    song_player.stop();
                 break;
 
             case "game_data":
