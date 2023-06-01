@@ -30,6 +30,7 @@ var menu = {
     
     dart_monkeys: [],
     bananas: [],
+    bloons: []
 };
 var cache = {
     textures: {},
@@ -371,19 +372,13 @@ function ConnectMenu()
             case 3: sprite = GetTexture("towers/super_monkey"); break;
         }
 
-        menu.dart_monkeys.push({ pos: sprite_pos, sprite: sprite });
+        menu.dart_monkeys.push({ pos: sprite_pos, sprite: sprite, speed: random(0.5, 4) * type, angle: 0 });
     }
 
     // draw dart_monkeys on menu screen
     for (var i = 0; i < menu.dart_monkeys.length; i++)
     {
         let sprite_pos = menu.dart_monkeys[i].pos;
-
-        if (menu.dart_monkeys[i].angle == null)
-        {
-            menu.dart_monkeys[i].angle = random(0, Math.PI * 2);
-            menu.dart_monkeys[i].speed = random(0.5, 5);
-        }
 
         push();
         translate(sprite_pos[0] + menu.dart_monkeys[i].sprite.width / 2, sprite_pos[1] + menu.dart_monkeys[i].sprite.height / 2);
@@ -434,6 +429,61 @@ function ConnectMenu()
         if (sprite_pos[1] < -100)           menu.dart_monkeys[i].pos[1] = height;
         if (sprite_pos[1] > height + 100)   menu.dart_monkeys[i].pos[1] = 0;
     }
+
+
+    // draw bloons walks around like a snake
+    if (menu.bloons.length < 50)
+    {
+        // add new bloon
+        let sprite_pos = [random(0, width), random(0, height)];
+        let sprite = GetTexture("bloons/1");
+        menu.bloons.push({ pos: sprite_pos, sprite: sprite, health: 1 });
+    }
+
+    // make index 0 move towards mouse
+    if (menu.bloons.length > 0)
+    {
+        let sprite_pos = menu.bloons[0].pos;
+        let mouse_pos = [mouseX, mouseY];
+
+        // if mouse is not on screen, move towards center
+        if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
+            mouse_pos = [width / 2, height / 2];
+
+        menu.bloons[0].speed = 2 * (dist(sprite_pos[0], sprite_pos[1], mouse_pos[0], mouse_pos[1]) / 10);
+
+        let angle_to_mouse = Math.atan2(mouse_pos[1] - sprite_pos[1], mouse_pos[0] - sprite_pos[0]);
+
+        // move bloon slowly towards mouse
+        sprite_pos[0] += Math.cos(angle_to_mouse) * menu.bloons[0].speed;
+        sprite_pos[1] += Math.sin(angle_to_mouse) * menu.bloons[0].speed;
+
+        // render bloon
+        image(menu.bloons[0].sprite, sprite_pos[0] - menu.bloons[0].sprite.width / 2, sprite_pos[1] - menu.bloons[0].sprite.height / 2, menu.bloons[0].sprite.width, menu.bloons[0].sprite.height);
+    }
+
+    // move all bloons towards bloon behind it
+    for (var i = 1; i < menu.bloons.length; i++)
+    {
+        let sprite_pos = menu.bloons[i].pos;
+        let prev_sprite_pos = menu.bloons[i - 1].pos;
+
+        menu.bloons[i].speed = 2 * (dist(sprite_pos[0], sprite_pos[1], prev_sprite_pos[0], prev_sprite_pos[1]) / 10);
+
+        let angle_to_prev_bloon = Math.atan2(prev_sprite_pos[1] - sprite_pos[1], prev_sprite_pos[0] - sprite_pos[0]);
+
+        // move bloon slowly towards mouse
+        sprite_pos[0] += Math.cos(angle_to_prev_bloon) * menu.bloons[i].speed;
+        sprite_pos[1] += Math.sin(angle_to_prev_bloon) * menu.bloons[i].speed;
+
+        // render bloon
+        image(menu.bloons[i].sprite, sprite_pos[0] - menu.bloons[i].sprite.width / 2, sprite_pos[1] - menu.bloons[i].sprite.height / 2, menu.bloons[i].sprite.width, menu.bloons[i].sprite.height);
+
+    }
+    
+
+        
+        
 
 
 
