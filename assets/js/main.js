@@ -21,7 +21,7 @@ var drag_handler = {
     is_dragging: false,
 };
 
-let menu = {
+var menu = {
     player_name_input: null,
     game_id_input: null,
     join_button: null,
@@ -29,11 +29,18 @@ let menu = {
     sell_button: null,
     
     dart_monkeys: [],
+    bananas: [],
 };
-let cache = {
+var cache = {
     textures: {},
     audio: {},
 };
+
+var banner_sway_left = true;
+var banner_sway_angle = 0;
+
+var banana_sway_left = true;
+var banana_sway_paused = false;
 // ================================ GLOBAL VARIABLES END ================================
 
 
@@ -41,7 +48,8 @@ let cache = {
 let songs = [
     "Main_Theme",
     "Jazz_Theme",
-    "Volcano_Theme"
+    "Volcano_Theme",
+    "Street_Party_Theme"
 ];
 
 let sounds = [
@@ -94,8 +102,12 @@ function SetupEventListeners() {
                 other_player = args[1];
                 menu.start_round_button.show();
 
+                // if song is playing, stop it
+                if (song_player != null)
+                    song_player.stop();
+
                 // play random song
-                song_player= GetAudio(songs[Math.floor(Math.random() * songs.length)]);
+                song_player = GetAudio(songs[Math.floor(Math.random() * songs.length)]);
                 song_player.loop();
                 song_player.setVolume(0.1);
                 break;
@@ -156,11 +168,14 @@ ReconnectLoop(); // initial connect
 
 
 function preload() {
-    for (var i = 0; i < songs.length; i++)
-        GetAudio(songs[i]);
-
     for (var i = 0; i < sounds.length; i++)
         GetAudio(sounds[i]);
+
+    for (var i = 0; i < songs.length; i++)
+        GetAudio(songs[i]);
+    
+
+    song_player = GetAudio(songs[Math.floor(Math.random() * songs.length)]);
 }
 
 
@@ -170,13 +185,44 @@ function setup() {
     menu.player_name_input = createInput("");
     menu.player_name_input.hide();
     menu.player_name_input.attribute("placeholder", "Player Name");
-    
+    menu.player_name_input.attribute("maxlength", "15");
+    menu.player_name_input.style("position", "absolute");
+    menu.player_name_input.style("font-size", "20px");
+    menu.player_name_input.style("font-weight", "bold");
+    menu.player_name_input.style("border-radius", "10px");
+    menu.player_name_input.style("background-color", "white");
+    menu.player_name_input.style("border", "none");
+    menu.player_name_input.style("outline", "none");
+    menu.player_name_input.style("padding", "10px");
+    menu.player_name_input.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
+    menu.player_name_input.style("text-align", "center");
+
     menu.game_id_input = createInput("");
     menu.game_id_input.hide();
     menu.game_id_input.attribute("placeholder", "Game ID");
+    menu.game_id_input.attribute("maxlength", "8");
+    menu.game_id_input.style("position", "absolute");
+    menu.game_id_input.style("font-size", "20px");
+    menu.game_id_input.style("font-weight", "bold");
+    menu.game_id_input.style("border-radius", "10px");
+    menu.game_id_input.style("background-color", "white");
+    menu.game_id_input.style("border", "none");
+    menu.game_id_input.style("outline", "none");
+    menu.game_id_input.style("padding", "10px");
+    menu.game_id_input.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
+    menu.game_id_input.style("text-align", "center");
 
     menu.join_button = createButton("Join");
     menu.join_button.hide();
+    menu.join_button.style("background-color", "green");
+    menu.join_button.style("font-weight", "bold");
+    menu.join_button.style("font-size", "20px");
+    menu.join_button.style("border-radius", "10px");
+    menu.join_button.style("position", "absolute");
+    menu.join_button.style("border", "none");
+    menu.join_button.style("outline", "none");
+    menu.join_button.style("padding", "10px");
+    menu.join_button.style("box-shadow", "0px 0px 10px 0px rgba(0,0,0,0.75)");
 
     menu.start_round_button = createButton("START");
     menu.start_round_button.position(1660, 884);
@@ -197,8 +243,15 @@ function setup() {
     menu.sell_button.style("border-radius", "10px");
     menu.sell_button.style("position", "absolute");
     menu.sell_button.hide();
-    
+}
 
+function mousePressed()
+{
+    if (song_player != null && !song_player.isPlaying())
+    {
+        song_player.setVolume(0.1);
+        song_player.loop();
+    }
 }
 
 // on resize fit canvas to screen
@@ -209,7 +262,9 @@ function windowResized() {
 function ConnectMenu()
 {
     // MENU
-    background(255);
+    let grass_background = GetTexture("maps/grass");
+    if (grass_background != null)
+        image(grass_background, 0, 0, grass_background.width, grass_background.height);
  
     // if not connected show connecting screen
     if (!connected) {
@@ -217,7 +272,6 @@ function ConnectMenu()
         for (const [key, value] of Object.entries(menu))
             try { value.hide(); } catch (error) { }
 
-        background(200);
         fill(0);
         textSize(32);
         textAlign(CENTER, CENTER);
@@ -225,17 +279,159 @@ function ConnectMenu()
         return;
     }
 
+    let banana_sprite = GetTexture("other/banana");
+    if (banana_sprite != null)
+    {
+        // randomly spawn bananas on screen
+        if (menu.bananas.length < 20)
+        {
+            // add new banana
+            let sprite_pos = [random(0, width), random(0, height)];
+            menu.bananas.push({ pos: sprite_pos, eaten: false });
+        }
+
+        // draw bananas on menu screen
+        for (var i = 0; i < menu.bananas.length; i++)
+        {
+            let sprite_pos = menu.bananas[i].pos;
+
+            if (menu.bananas[i].angle == null)
+            {
+                menu.bananas[i].angle = 0;
+                menu.bananas[i].speed = random(0.5, 5);
+            }
+
+            // rotate banana slowly towards +10 degrees radian
+            if (banana_sway_left && !banana_sway_paused)
+                menu.bananas[i].angle += 0.05;
+            else if (!banana_sway_left && !banana_sway_paused)
+                menu.bananas[i].angle -= 0.05;
+
+            if (menu.bananas[i].angle >= 0.45)
+                banana_sway_paused = true;
+            if (menu.bananas[i].angle <= -0.45)
+                banana_sway_paused = true;
+
+
+            // un-pause banana sway after 1 second
+            if (banana_sway_paused)
+            {
+                if (frameCount % 90 == 0)
+                {
+                    banana_sway_left = !banana_sway_left;
+                    banana_sway_paused = false;
+                }
+            }
+
+
+            if (menu.bananas[i].eaten == false)
+            {
+                push();
+                translate(sprite_pos[0] + banana_sprite.width / 2, sprite_pos[1] + banana_sprite.height / 2);
+                rotate(menu.bananas[i].angle);
+                image(banana_sprite, -banana_sprite.width / 2, -banana_sprite.height / 2, banana_sprite.width, banana_sprite.height);
+                pop();
+            }
+            else
+            {
+                menu.bananas[i].eaten = false;
+                menu.bananas[i].pos = [random(0, width), random(0, height)];
+            }
+        }
+    }
+
+    
+    // check if dart_monkey sprite is loaded in cache
+    let dart_monkey_sprite = GetTexture("towers/dart_monkey");
+    if (dart_monkey_sprite != null)
+    {
+        // get mouse position
+        let mouse_pos = [mouseX, mouseY];
+        if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
+            mouse_pos = [width / 2, height / 2];
+
+        // draw 10 random dart_monkeys on screen
+        if (menu.dart_monkeys.length < 20)
+        {
+            // add new dart_monkey
+            let sprite_pos = [random(0, width), random(0, height)];
+            menu.dart_monkeys.push({ pos: sprite_pos });
+        }
+
+        // draw dart_monkeys on menu screen
+        for (var i = 0; i < menu.dart_monkeys.length; i++)
+        {
+            let sprite_pos = menu.dart_monkeys[i].pos;
+
+            if (menu.dart_monkeys[i].angle == null)
+            {
+                menu.dart_monkeys[i].angle = random(0, Math.PI * 2);
+                menu.dart_monkeys[i].speed = random(0.5, 5);
+            }
+
+            push();
+            translate(sprite_pos[0] + dart_monkey_sprite.width / 2, sprite_pos[1] + dart_monkey_sprite.height / 2);
+            rotate(menu.dart_monkeys[i].angle + Math.PI / 2);
+            image(dart_monkey_sprite, -dart_monkey_sprite.width / 2, -dart_monkey_sprite.height / 2, dart_monkey_sprite.width, dart_monkey_sprite.height);
+            pop();
+
+            // move monkey slowly forward
+            sprite_pos[0] += Math.cos(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
+            sprite_pos[1] += Math.sin(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
+            // rotate towards closest banana
+            let closest_banana = null;
+            let closest_banana_distance = 99999;
+            for (var j = 0; j < menu.bananas.length; j++)
+            {
+                let banana = menu.bananas[j];
+                if (banana.eaten)
+                    continue;
+
+                let distance = dist(sprite_pos[0], sprite_pos[1], banana.pos[0], banana.pos[1]);
+                if (distance < closest_banana_distance)
+                {
+                    closest_banana_distance = distance;
+                    closest_banana = banana;
+                }
+            }
+
+            if (closest_banana != null)
+            {
+                // change angle slowly towards banana
+                let angle_to_banana = Math.atan2(closest_banana.pos[1] - sprite_pos[1], closest_banana.pos[0] - sprite_pos[0]);
+                let angle_difference = angle_to_banana - menu.dart_monkeys[i].angle;
+                if (angle_difference > Math.PI)
+                    angle_difference -= Math.PI * 2;
+                if (angle_difference < -Math.PI)
+                    angle_difference += Math.PI * 2;
+
+                menu.dart_monkeys[i].angle += angle_difference * 0.01;
+            }
+
+            // if monkey is close to banana, eat it
+            if (closest_banana != null && closest_banana_distance < 100)
+                closest_banana.eaten = true;
+
+            // if any monkey is out of bounds, move it to the opposite side
+            if (sprite_pos[0] < -100)           menu.dart_monkeys[i].pos[0] = width;
+            if (sprite_pos[0] > width + 100)    menu.dart_monkeys[i].pos[0] = 0;
+            if (sprite_pos[1] < -100)           menu.dart_monkeys[i].pos[1] = height;
+            if (sprite_pos[1] > height + 100)   menu.dart_monkeys[i].pos[1] = 0;
+        }
+    }
+
+
+
     // if connected and game_id is not set show connect screen
     if (connected && game_id == "") {
-        background(200);
         fill(0);
         textSize(32);
         textAlign(CENTER, CENTER);
         
         // set position of input field and button
-        menu.player_name_input.position(width / 2 - menu.player_name_input.width / 2, height / 2 - 110);
-        menu.game_id_input.position(width / 2 - menu.game_id_input.width / 2, height / 2 - 55);
-        menu.join_button.position(width / 2 - menu.join_button.width / 2, height / 2);
+        menu.player_name_input.position(width / 2 - menu.player_name_input.width / 2, height / 2 + 50);
+        menu.game_id_input.position(width / 2 - menu.game_id_input.width / 2, height / 2 + 110);
+        menu.join_button.position(width / 2 - menu.join_button.width / 2, height / 2 + 180);
 
         // size of input field and button
         menu.player_name_input.size(200, 50);
@@ -252,61 +448,75 @@ function ConnectMenu()
             game_id = menu.game_id_input.value();
             ws.send("join|" + game_id + "|" + menu.player_name_input.value());
         });
-
-        
-        // check if dart_monkey sprite is loaded in cache
-        let sprite = GetTexture("towers/dart_monkey");
-        if (sprite != null)
-        {
-            // get mouse position
-            let mouse_pos = [mouseX, mouseY];
-            if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
-                mouse_pos = [width / 2, height / 2];
-
-
-            // draw 10 random dart_monkeys on screen
-            if (menu.dart_monkeys.length < 10)
-            {
-                // add new dart_monkey
-                let sprite_pos = [random(0, width), random(0, height)];
-                // prevent dart_monkey from spawning in the middle within 200 pixels
-                if (sprite_pos[0] > width / 2 - 200 && sprite_pos[0] < width / 2 + 200)
-                    sprite_pos[0] = random(0, width);
-                if (sprite_pos[1] > height / 2 - 200 && sprite_pos[1] < height / 2 + 200)
-                    sprite_pos[1] = random(0, height);
-
-                menu.dart_monkeys.push({ pos: sprite_pos });
-            }
-
-            // draw dart_monkeys on menu screen
-            for (var i = 0; i < menu.dart_monkeys.length; i++)
-            {
-                let sprite_pos = menu.dart_monkeys[i].pos;
-                // draw dart_monkey so its looking at mouse
-                let angle = Math.atan2(mouse_pos[1] - (sprite_pos[1] + sprite.height / 2), mouse_pos[0] - (sprite_pos[0] + sprite.width / 2));
-                push();
-                translate(sprite_pos[0] + sprite.width / 2, sprite_pos[1] + sprite.height / 2);
-                rotate(angle + Math.PI / 2);
-                image(sprite, -sprite.width / 2, -sprite.height / 2, sprite.width, sprite.height);
-                pop();
-            }
-
-        }
-
-        return;
     }
 
     if (connected && game_id != "" && other_player == "" && game_data == null) {
-        background(200);
-        fill(0);
+        fill(255);
         textSize(32);
         textAlign(CENTER, CENTER);
-        text("Waiting for other player...", width / 2, height / 2);
-        fill(255, 0, 0);
-        text(game_id, width / 2, height / 2 + 50);
-        return;
+        strokeWeight(2);
+        stroke(0);
+        let wtext = "Waiting for other player";
+        // add dots to text animation
+        for (var i = 0; i < Math.floor(frameCount / 30) % 4; i++)
+            wtext += ".";
+        text(wtext, width / 2, height / 2 + 100);
+        strokeWeight(1);
+
+        // gray 50% opacity filled box around game id text
+        fill(0, 0, 0, 100);
+        rect(width / 2 - 200 + Math.sin(frameCount / 60) * 10, height / 2 + 150 + Math.sin(frameCount / 30) * 10, 400, 100, 10);
+
+        // game id text
+        fill(Math.sin(frameCount / 30) * 127 + 127, Math.sin(frameCount / 30 + 2) * 127 + 127, Math.sin(frameCount / 30 + 4) * 127 + 127);
+        textSize(64);
+        strokeWeight(2);
+        stroke(0);
+        text(game_id.toUpperCase(), width / 2 + Math.sin(frameCount / 60) * 10, height / 2 + 200 + Math.sin(frameCount / 30) * 10);
+        strokeWeight(1);
+
+        // show instructions
+        // fade to black then back to white
+        fill(0);
+        textSize(24);
+        strokeWeight(2);
+        stroke(Math.sin(frameCount / 30) * 127 + 127, Math.sin(frameCount / 30) * 127 + 127, Math.sin(frameCount / 30) * 127 + 127, 255);
+
+        text("Send this Game ID to your friend so they can join", width / 2, height / 2 + 300);
+        strokeWeight(1);
+    }
+
+    if (connected && other_player == "") {
+        // draw banner.png
+        let banner = GetTexture("banner");
+        if (banner != null)
+        {
+            // sway smoothly so it slows down at the end
+            if (banner_sway_left)
+                banner_sway_angle += 0.001;
+            else
+                banner_sway_angle -= 0.001;
+
+            if (banner_sway_angle > 0.15)
+                banner_sway_left = false;
+            if (banner_sway_angle < -0.15)
+                banner_sway_left = true;
+
+            // draw banner
+            push();
+            translate(width / 2, 250);
+            rotate(banner_sway_angle);
+            scale(1 + Math.sin(banner_sway_angle) * 0.6);
+            image(banner, -banner.width / 2, -banner.height / 2, banner.width, banner.height);
+            pop();
+        }
     }
 }
+
+
+
+
+
 
 
 // ================================ DRAW LOOP START ================================
