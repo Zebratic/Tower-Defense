@@ -7,7 +7,7 @@ while (maps == undefined) { sleep(1) } // wait for maps to load
 
 // ================================ GLOBAL VARIABLES START ================================
 var connected = false;
-var websocket_url = "wss://b939-141-98-254-179.ngrok-free.app/";
+var websocket_url = "wss://odder.world:3500/";
 var ws = null;
 
 // game info
@@ -62,7 +62,11 @@ let sounds = [
     "30_Pop3",
     "31_Pop4",
     "18_PlaceTower",
-    "62_Sell"
+    "61_GameWin",
+    "62_Sell",
+    "63_GameOver", 
+    "68_UnlockedItemClicked",
+    "69_Expire",
 ];
 let song_player = null;
 // ================================ SONG MANAGER END ================================
@@ -250,7 +254,6 @@ function setup() {
 
     menu.respawn_bloons_button = createButton("Respawn Bloons");
     menu.respawn_bloons_button.position(width / 2 - 110, height - 70);
-    menu.respawn_bloons_button.size(220, 50);
     menu.respawn_bloons_button.style("background-color", "rgb(255, 0, 0, 0.5)");
     menu.respawn_bloons_button.style("font-weight", "bold");
     menu.respawn_bloons_button.style("font-size", "20px");
@@ -537,11 +540,13 @@ function ConnectMenu()
         menu.player_name_input.position(width / 2 - menu.player_name_input.width / 2, height / 2 + 50);
         menu.game_id_input.position(width / 2 - menu.game_id_input.width / 2, height / 2 + 110);
         menu.join_button.position(width / 2 - menu.join_button.width / 2, height / 2 + 180);
+        menu.respawn_bloons_button.position(width / 2 - 110, height - 70);
 
         // size of input field and button
         menu.player_name_input.size(200, 50);
         menu.game_id_input.size(200, 50);
         menu.join_button.size(200, 50);
+        menu.respawn_bloons_button.size(220, 50);
 
         // show connect button and input field
         menu.player_name_input.show();
@@ -553,11 +558,27 @@ function ConnectMenu()
         menu.join_button.mousePressed(function () {
             game_id = menu.game_id_input.value();
             ws.send("join|" + game_id + "|" + menu.player_name_input.value());
+
+            // play sound
+            let sound = GetAudio("69_Expire");
+            if (sound != null)
+            {
+                sound.setVolume(1);
+                sound.play();
+            }
         });
 
         menu.respawn_bloons_button.mousePressed(function () {
             all_menu_bloons_spawned = false;
             menu.bloons = [];
+
+            // play sound
+            let sound = GetAudio("68_UnlockedItemClicked");
+            if (sound != null)
+            {
+                sound.setVolume(0.2);
+                sound.play();
+            }
         });
     }
 

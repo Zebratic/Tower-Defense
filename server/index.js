@@ -17,7 +17,7 @@ const colors = {
     error: "\x1b[31m",
     success: "\x1b[32m"
 };
-const port = 3500;
+const port = 80;
 /////////////////// SETUP ///////////////////
 
 
@@ -374,7 +374,7 @@ function GameLoop(game_id, first_run = false)
     {
         if (first_run)
         {
-            game.wave_data = structuredClone(wave_data);
+            game.wave_data = JSON.parse(JSON.stringify(wave_data));
             game.wave = {
                 started: true,
                 running: true,
@@ -401,6 +401,7 @@ function GameLoop(game_id, first_run = false)
                 if (game.wave.round > 0)
                 {
                     // check if round exists
+                    let round_exists = false;
                     if (game.wave_data[game.wave.round] != undefined)
                     {
                         for (const [key, value] of Object.entries(game.wave_data[game.wave.round])) {
@@ -415,7 +416,17 @@ function GameLoop(game_id, first_run = false)
                                 continue;
 
                             game.wave.total_bloons += parseInt(value);
+                            round_exists = true;
                         }
+                    }
+
+                    if (!round_exists)
+                    {
+                        SendPacketToPlayers(game, "game_over_win");
+                        SendPacketToPlayers(game, "play_sound|61_GameWin");
+                        BetterLog("success", "Game " + game_id + " has ended");
+                        delete games[game_id];
+                        return;
                     }
 
                     // send round_started to players
@@ -505,6 +516,7 @@ function GameLoop(game_id, first_run = false)
 
                 // send game over to players
                 SendPacketToPlayers(game, "game_over");
+                SendPacketToPlayers(game, "play_sound|63_GameOver");
             }
 
             // loop all towers to check which bloon has the highest progress value and is in range
