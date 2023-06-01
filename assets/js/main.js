@@ -334,90 +334,105 @@ function ConnectMenu()
             }
             else
             {
-                menu.bananas[i].eaten = false;
-                menu.bananas[i].pos = [random(0, width), random(0, height)];
+                // on 60th frame, reset banana
+                if (frameCount % 60 == 0)
+                {
+                    // roll random number to see if banana should be reset
+                    if (Math.random() > 0.5)
+                    {
+                        menu.bananas[i].eaten = false;
+                        menu.bananas[i].pos = [random(0, width), random(0, height)];
+                    }
+                }
             }
         }
     }
 
     
-    // check if dart_monkey sprite is loaded in cache
-    let dart_monkey_sprite = GetTexture("towers/dart_monkey");
-    if (dart_monkey_sprite != null)
+    // draw monkeys on screen
+    if (menu.dart_monkeys.length < 20)
     {
-        // get mouse position
-        let mouse_pos = [mouseX, mouseY];
-        if (mouse_pos[0] == 0 && mouse_pos[1] == 0)
-            mouse_pos = [width / 2, height / 2];
+        // add new dart_monkey
+        let sprite_pos = [random(0, width), random(0, height)];
 
-        // draw 10 random dart_monkeys on screen
-        if (menu.dart_monkeys.length < 20)
+        // roll number, 1 is the most common, 2 is less common, 3 is rare
+        let type = 0;
+
+        let roll = Math.random();
+        if (roll > 0.9)         type = 3;
+        else if (roll > 0.7)    type = 2;
+        else                    type = 1;
+
+        let sprite = null;
+        switch (type)
         {
-            // add new dart_monkey
-            let sprite_pos = [random(0, width), random(0, height)];
-            menu.dart_monkeys.push({ pos: sprite_pos });
+            case 1: sprite = GetTexture("towers/dart_monkey"); break;
+            case 2: sprite = GetTexture("towers/ninja_monkey"); break;
+            case 3: sprite = GetTexture("towers/super_monkey"); break;
         }
 
-        // draw dart_monkeys on menu screen
-        for (var i = 0; i < menu.dart_monkeys.length; i++)
+        menu.dart_monkeys.push({ pos: sprite_pos, sprite: sprite });
+    }
+
+    // draw dart_monkeys on menu screen
+    for (var i = 0; i < menu.dart_monkeys.length; i++)
+    {
+        let sprite_pos = menu.dart_monkeys[i].pos;
+
+        if (menu.dart_monkeys[i].angle == null)
         {
-            let sprite_pos = menu.dart_monkeys[i].pos;
-
-            if (menu.dart_monkeys[i].angle == null)
-            {
-                menu.dart_monkeys[i].angle = random(0, Math.PI * 2);
-                menu.dart_monkeys[i].speed = random(0.5, 5);
-            }
-
-            push();
-            translate(sprite_pos[0] + dart_monkey_sprite.width / 2, sprite_pos[1] + dart_monkey_sprite.height / 2);
-            rotate(menu.dart_monkeys[i].angle + Math.PI / 2);
-            image(dart_monkey_sprite, -dart_monkey_sprite.width / 2, -dart_monkey_sprite.height / 2, dart_monkey_sprite.width, dart_monkey_sprite.height);
-            pop();
-
-            // move monkey slowly forward
-            sprite_pos[0] += Math.cos(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
-            sprite_pos[1] += Math.sin(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
-            // rotate towards closest banana
-            let closest_banana = null;
-            let closest_banana_distance = 99999;
-            for (var j = 0; j < menu.bananas.length; j++)
-            {
-                let banana = menu.bananas[j];
-                if (banana.eaten)
-                    continue;
-
-                let distance = dist(sprite_pos[0], sprite_pos[1], banana.pos[0], banana.pos[1]);
-                if (distance < closest_banana_distance)
-                {
-                    closest_banana_distance = distance;
-                    closest_banana = banana;
-                }
-            }
-
-            if (closest_banana != null)
-            {
-                // change angle slowly towards banana
-                let angle_to_banana = Math.atan2(closest_banana.pos[1] - sprite_pos[1], closest_banana.pos[0] - sprite_pos[0]);
-                let angle_difference = angle_to_banana - menu.dart_monkeys[i].angle;
-                if (angle_difference > Math.PI)
-                    angle_difference -= Math.PI * 2;
-                if (angle_difference < -Math.PI)
-                    angle_difference += Math.PI * 2;
-
-                menu.dart_monkeys[i].angle += angle_difference * 0.01;
-            }
-
-            // if monkey is close to banana, eat it
-            if (closest_banana != null && closest_banana_distance < 100)
-                closest_banana.eaten = true;
-
-            // if any monkey is out of bounds, move it to the opposite side
-            if (sprite_pos[0] < -100)           menu.dart_monkeys[i].pos[0] = width;
-            if (sprite_pos[0] > width + 100)    menu.dart_monkeys[i].pos[0] = 0;
-            if (sprite_pos[1] < -100)           menu.dart_monkeys[i].pos[1] = height;
-            if (sprite_pos[1] > height + 100)   menu.dart_monkeys[i].pos[1] = 0;
+            menu.dart_monkeys[i].angle = random(0, Math.PI * 2);
+            menu.dart_monkeys[i].speed = random(0.5, 5);
         }
+
+        push();
+        translate(sprite_pos[0] + menu.dart_monkeys[i].sprite.width / 2, sprite_pos[1] + menu.dart_monkeys[i].sprite.height / 2);
+        rotate(menu.dart_monkeys[i].angle + Math.PI / 2);
+        image(menu.dart_monkeys[i].sprite, -menu.dart_monkeys[i].sprite.width / 2, -menu.dart_monkeys[i].sprite.height / 2, menu.dart_monkeys[i].sprite.width, menu.dart_monkeys[i].sprite.height);
+        pop();
+
+        // move monkey slowly forward
+        sprite_pos[0] += Math.cos(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
+        sprite_pos[1] += Math.sin(menu.dart_monkeys[i].angle) * menu.dart_monkeys[i].speed;
+        // rotate towards closest banana
+        let closest_banana = null;
+        let closest_banana_distance = 99999;
+        for (var j = 0; j < menu.bananas.length; j++)
+        {
+            let banana = menu.bananas[j];
+            if (banana.eaten)
+                continue;
+
+            let distance = dist(sprite_pos[0], sprite_pos[1], banana.pos[0], banana.pos[1]);
+            if (distance < closest_banana_distance)
+            {
+                closest_banana_distance = distance;
+                closest_banana = banana;
+            }
+        }
+
+        if (closest_banana != null)
+        {
+            // change angle slowly towards banana
+            let angle_to_banana = Math.atan2(closest_banana.pos[1] - sprite_pos[1], closest_banana.pos[0] - sprite_pos[0]);
+            let angle_difference = angle_to_banana - menu.dart_monkeys[i].angle;
+            if (angle_difference > Math.PI)
+                angle_difference -= Math.PI * 2;
+            if (angle_difference < -Math.PI)
+                angle_difference += Math.PI * 2;
+
+            menu.dart_monkeys[i].angle += angle_difference * 0.02;
+        }
+
+        // if monkey is close to banana, eat it
+        if (closest_banana != null && closest_banana_distance < 50)
+            closest_banana.eaten = true;
+
+        // if any monkey is out of bounds, move it to the opposite side
+        if (sprite_pos[0] < -100)           menu.dart_monkeys[i].pos[0] = width;
+        if (sprite_pos[0] > width + 100)    menu.dart_monkeys[i].pos[0] = 0;
+        if (sprite_pos[1] < -100)           menu.dart_monkeys[i].pos[1] = height;
+        if (sprite_pos[1] > height + 100)   menu.dart_monkeys[i].pos[1] = 0;
     }
 
 
@@ -476,12 +491,10 @@ function ConnectMenu()
         strokeWeight(1);
 
         // show instructions
-        // fade to black then back to white
         fill(0);
         textSize(24);
         strokeWeight(2);
         stroke(Math.sin(frameCount / 30) * 127 + 127, Math.sin(frameCount / 30) * 127 + 127, Math.sin(frameCount / 30) * 127 + 127, 255);
-
         text("Send this Game ID to your friend so they can join", width / 2, height / 2 + 300);
         strokeWeight(1);
     }
