@@ -7,7 +7,7 @@ while (maps == undefined) { sleep(1) } // wait for maps to load
 
 // ================================ GLOBAL VARIABLES START ================================
 var connected = false;
-var websocket_url = "wss://odder.world:3500/";
+var websocket_url = "ws://localhost/";
 var ws = null;
 
 // game info
@@ -757,7 +757,7 @@ function GameLoop()
     }
 
     // if mouse clicked on a tower, select it in drag_handler
-    if (mouseIsPressed && !drag_handler.is_dragging)
+    if (mouseIsPressed && !drag_handler.is_dragging && game_data.towers != null)
     {
         let found_tower = false;
         for (var i = 0; i < game_data.towers.length; i++)
@@ -785,7 +785,7 @@ function GameLoop()
     }
 
     // if tower is selected
-    if (drag_handler.is_selected)
+    if (drag_handler.is_selected && drag_handler.tower != null && game_data.towers != null)
     {
         //draw a sell button
         // update text to show sell value
@@ -805,7 +805,7 @@ function GameLoop()
 
 
     // ========== PROJECTILES ==========
-    if (game_data.projectiles != null)
+    if (game_data.projectiles != null && game_data.projectiles.length > 0)
     {
         for (var i = 0; i < game_data.projectiles.length; i++)
         {
@@ -830,7 +830,7 @@ function GameLoop()
 
 
     // ========== DRAG ENTITY ==========
-    if (drag_handler.is_dragging && drag_handler.tower != null)
+    if (drag_handler.is_dragging && drag_handler.tower != null && game_data.towers != null)
     {
         if (drag_handler.tower != null)
         {
