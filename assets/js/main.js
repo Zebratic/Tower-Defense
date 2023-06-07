@@ -149,6 +149,12 @@ function SetupEventListeners() {
                 game_data = null;
                 break;
 
+            case "game_over_win":
+                other_player = "";
+                game_id = "";
+                game_data = null;
+                break;
+
             case "play_sound":
                 let sound = GetAudio(args[1]);
                 if (sound != null)
@@ -283,6 +289,7 @@ function windowResized() {
 function ConnectMenu()
 {
     // MENU
+    background(255);
     let grass_background = GetTexture("maps/grass");
     if (grass_background != null)
         image(grass_background, 0, 0, grass_background.width, grass_background.height);
@@ -324,13 +331,13 @@ function ConnectMenu()
 
             // rotate banana slowly towards +10 degrees radian
             if (banana_sway_left && !banana_sway_paused)
-                menu.bananas[i].angle += 0.05;
+                menu.bananas[i].angle += 0.1;
             else if (!banana_sway_left && !banana_sway_paused)
-                menu.bananas[i].angle -= 0.05;
+                menu.bananas[i].angle -= 0.1;
 
-            if (menu.bananas[i].angle >= 0.45)
+            if (menu.bananas[i].angle >= 1)
                 banana_sway_paused = true;
-            if (menu.bananas[i].angle <= -0.45)
+            if (menu.bananas[i].angle <= -1)
                 banana_sway_paused = true;
 
 

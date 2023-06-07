@@ -127,6 +127,32 @@ app.ws('/', function (ws, req) {
         }
 
 
+        
+        // get game from uid
+        let game_id = "";
+        let player_index = -1;
+        let player_name = "";
+        for (const [key, value] of Object.entries(games)) {
+            try {
+                for (var i = 0; i < value.players.length; i++) {
+                    if (value.players[i].uid == ws.uid)
+                    {
+                        game_id = key;
+                        player_index = i;
+                        player_name = value.players[i].username;
+                    }
+                }
+            }
+            catch (e) { }
+        }
+
+        if (game_id == "")
+        {
+            BetterLog("error", "Player " + player_name + " tried to update data but is not in a game");
+            return;
+        }
+
+
         if (msg.startsWith('get_data|')) {
             const game_id = msg.split('|')[1].toLowerCase();
             if (games[game_id] != undefined)
@@ -142,25 +168,6 @@ app.ws('/', function (ws, req) {
         // update_data|sell_tower|58
         if (msg.startsWith('update_data|')) {
             let action = msg.split('|')[1].toLowerCase();
-
-            // get game from uid
-            let game_id = "";
-            let player_index = -1;
-            let player_name = "";
-            for (const [key, value] of Object.entries(games)) {
-                try {
-                    for (var i = 0; i < value.players.length; i++) {
-                        if (value.players[i].uid == ws.uid)
-                        {
-                            game_id = key;
-                            player_index = i;
-                            player_name = value.players[i].username;
-                        }
-                    }
-                }
-                catch (e) { }
-            }
-
 
             switch (action) {
                 case "place_tower":
